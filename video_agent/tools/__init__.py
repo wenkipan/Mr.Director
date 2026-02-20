@@ -9,11 +9,14 @@ from video_agent.tools.info import get_video_info
 from video_agent.tools.overlay import add_text_overlay
 from video_agent.tools.shell import shell
 from video_agent.tools.speed import speed_video
+from video_agent.tools.split import split_video
 from video_agent.tools.subtitles import add_subtitles
+from video_agent.tools.tts import tts
 
 # name -> callable
 TOOLS = {
     "get_video_info": get_video_info,
+    "split_video": split_video,
     "compress_video": compress_video,
     "analyze_video": analyze_video,
     "cut_video": cut_video,
@@ -23,6 +26,7 @@ TOOLS = {
     "add_subtitles": add_subtitles,
     "add_text_overlay": add_text_overlay,
     "extract_audio": extract_audio,
+    "tts": tts,
     "shell": shell,
     "read_file": read_file,
     "write_file": write_file,
