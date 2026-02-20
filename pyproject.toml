@@ -1,0 +1,12 @@
+[project]
+name = "video-agent"
+version = "0.1.0"
+description = "LLM as Director - ReAct Agent for video editing"
+requires-python = ">=3.11"
+dependencies = [
+    "google-genai>=1.0.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.scripts]
+videoagent = "main:main"

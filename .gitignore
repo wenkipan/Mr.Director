@@ -1,0 +1,27 @@
+# Python build artifacts
+*.egg-info/
+*.egg
+dist/
+build/
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment variables
+.env
+
+# Claude Code local config
+.claude/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
