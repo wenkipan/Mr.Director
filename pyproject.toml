@@ -7,7 +7,11 @@ dependencies = [
     "google-genai>=1.0.0",
     "python-dotenv>=1.0.0",
     "edge-tts>=6.1.0",
+    "faster-whisper>=1.0.0",
 ]
 
 [project.scripts]
-videoagent = "main:main"
+videoagent = "video_agent.cli:main"
+
+[tool.setuptools]
+packages = ["video_agent", "video_agent.tools"]

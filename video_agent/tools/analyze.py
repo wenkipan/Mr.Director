@@ -10,13 +10,18 @@ def analyze_video(video_path: str, workspace_dir: str) -> str:
     """Analyze video content using Gemini vision. Generates timestamped
     summary and speech transcription saved as a markdown file.
 
+    Internally compresses the video before uploading to Gemini to reduce
+    upload size; the original file is not modified.
+
     Args:
-        video_path: Absolute path to the video file to analyze (e.g. /home/user/workspace/clip.mp4).
+        video_path: Absolute path to the original video file to analyze.
         workspace_dir: Absolute path to the workspace directory.
 
     Returns:
         The analysis content (also saved as markdown file in workspace).
     """
+    from video_agent.tools.compress import compress_video
+
     http_options = {"api_version": "v1beta"}
     if GEMINI_BASE_URL:
         http_options["base_url"] = GEMINI_BASE_URL
@@ -25,7 +30,8 @@ def analyze_video(video_path: str, workspace_dir: str) -> str:
         http_options=http_options,
     )
 
-    with open(video_path, "rb") as f:
+    compressed_path = compress_video(video_path, workspace_dir)
+    with open(compressed_path, "rb") as f:
         video_bytes = f.read()
     video_part = types.Part.from_bytes(
         data=video_bytes,

@@ -1,5 +1,7 @@
 # Video Agent — LLM as Director
 
+[English](README_en.md) | 中文
+
 作为一个懒狗，我总是想尽办法偷懒。
 现在代码都是vibecoding了，你还指望我自己手动剪辑吗？
 这就是本项目的由来，一个像claudecode/codex那样的剪辑agent
@@ -15,11 +17,9 @@
 不是那种"选片段→填参数→点导出"的固定流水线。
 更像是雇了个编导——你说意图，它自己决定怎么干。
 
-Agent 会先压缩视频方便迭代，然后用 Gemini 把视频从头看一遍、把语音一句一句转录出来（带毫秒时间戳），再给你出一份编导方案，等你点头之后才开始动刀。
+Agent 会用 Gemini 看懂视频画面，再用本地 Whisper 把语音一句一句精确转录出来（帧级时间戳，精度 ~100ms），最后给你出一份编导方案，等你点头之后才开始动刀。
 
 改了主意也没关系，直接说，它会重新出方案再确认，不会偷偷就改了。
-
-效果满意之后，它再拿原始高清素材重跑一遍，输出最终视频。
 
 ## 跑起来
 
@@ -29,6 +29,9 @@ Agent 会先压缩视频方便迭代，然后用 Gemini 把视频从头看一遍
 - `Noto Sans CJK` 字体（中文贴字用）
 
 ```bash
+python3 -m venv .venv
+source .venv/bin/activate
+
 pip install -e .
 cp .env.example .env
 # 填上 GEMINI_API_KEY
@@ -52,6 +55,8 @@ videoagent /你的项目路径  # 指定工作目录
 | `GEMINI_BASE_URL` | API 代理地址 | — |
 | `COMPRESS_SHORT_SIDE` | 压缩短边分辨率 | `720` |
 | `COMPRESS_BITRATE` | 压缩码率 | `1M` |
+| `WHISPER_MODEL` | Whisper 模型大小 | `medium` |
+| `WHISPER_DEVICE` | 推理设备 | `cpu`（有 CUDA 可改 `cuda`） |
 | `WORKSPACE_DIR` | 工作目录 | 输入文件同级 `workspace/` |
 
 ## 能干什么

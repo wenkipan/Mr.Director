@@ -1,5 +1,7 @@
 # Video Agent — LLM as Director
 
+English | [中文](README.md)
+
 I'm lazy. I've always been lazy.
 Coding is already vibecoding. You really think I'm going to sit there and manually edit videos?
 That's why this exists — a video editing agent, like Claude Code or Codex, but for your footage.
@@ -15,11 +17,9 @@ Drop in a screen recording, say "make this a 30-second TikTok", and go touch gra
 Not a "select clip → fill in params → click export" pipeline.
 More like hiring a director — you give the intent, it figures out the rest.
 
-The agent compresses your video first (faster to iterate), then feeds it to Gemini to watch the whole thing and transcribe every word with millisecond timestamps. Then it writes up an editing plan in plain English and waits for your OK before touching anything.
+The agent feeds your video to Gemini to understand the footage, then runs it through local Whisper to get word-level timestamps accurate to ~100ms. Then it writes up an editing plan and waits for your OK before touching anything.
 
 Changed your mind? Just say so. It'll rewrite the plan and ask again. It won't sneak in edits without confirmation.
-
-Once you're happy with the result on the compressed version, it reruns everything on the original HD footage and outputs the final video.
 
 ## Getting started
 
@@ -29,6 +29,9 @@ You'll need:
 - `Noto Sans CJK` font (for CJK text overlays)
 
 ```bash
+python3 -m venv .venv
+source .venv/bin/activate
+
 pip install -e .
 cp .env.example .env
 # fill in your GEMINI_API_KEY
@@ -52,6 +55,8 @@ Just describe what you want in natural language. `/quit` to exit.
 | `GEMINI_BASE_URL` | API proxy URL | — |
 | `COMPRESS_SHORT_SIDE` | Short side resolution for compression | `720` |
 | `COMPRESS_BITRATE` | Video bitrate for compression | `1M` |
+| `WHISPER_MODEL` | Whisper model size | `medium` |
+| `WHISPER_DEVICE` | Inference device | `cpu` (use `cuda` if available) |
 | `WORKSPACE_DIR` | Workspace directory | `workspace/` next to input file |
 
 ## What it can do
