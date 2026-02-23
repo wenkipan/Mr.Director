@@ -1,0 +1,64 @@
+import { useEffect } from 'react';
+import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
+import MediaPanel from './components/layout/MediaPanel';
+import CenterPanel from './components/layout/CenterPanel';
+import ChatPanel from './components/layout/ChatPanel';
+import { useWebSocket } from './hooks/useWebSocket';
+import { useAppStore } from './stores/appStore';
+import { createProject, getProject } from './lib/api';
+
+export default function App() {
+  const { projectId, setProjectId, setTimeline } = useAppStore();
+
+  // Initialize project on first load, or reload existing project
+  useEffect(() => {
+    if (!projectId) {
+      // No saved project — create a new one
+      createProject('Untitled')
+        .then((res) => {
+          setProjectId(res.project_id);
+          setTimeline(res.timeline);
+        })
+        .catch((e) => console.error('Failed to create project:', e));
+      return;
+    }
+
+    // Saved project exists — try to load it
+    getProject(projectId)
+      .then((res) => {
+        setTimeline(res.timeline);
+      })
+      .catch(() => {
+        // Project no longer exists on backend — create a new one
+        setProjectId(null);
+      });
+  }, [projectId, setProjectId, setTimeline]);
+
+  // Connect WebSocket for real-time updates
+  useWebSocket(projectId);
+
+  return (
+    <div className="h-full bg-zinc-950 text-zinc-100">
+      <PanelGroup direction="horizontal" className="h-full">
+        {/* Left: Media Browser */}
+        <Panel defaultSize={20} minSize={15} maxSize={30}>
+          <MediaPanel />
+        </Panel>
+
+        <PanelResizeHandle className="w-1 bg-zinc-800 hover:bg-blue-500 transition-colors" />
+
+        {/* Center: Preview + Timeline */}
+        <Panel defaultSize={55} minSize={40}>
+          <CenterPanel />
+        </Panel>
+
+        <PanelResizeHandle className="w-1 bg-zinc-800 hover:bg-blue-500 transition-colors" />
+
+        {/* Right: Chat */}
+        <Panel defaultSize={25} minSize={15} maxSize={35}>
+          <ChatPanel />
+        </Panel>
+      </PanelGroup>
+    </div>
+  );
+}

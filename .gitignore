@@ -1,0 +1,33 @@
+node_modules/
+dist/
+.vite/
+*.tsbuildinfo
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.uv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Projects data
+apps/backend/projects/
+
+# Remotion
+out/

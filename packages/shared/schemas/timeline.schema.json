@@ -1,0 +1,129 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://mrdv2.dev/schemas/timeline.schema.json",
+  "title": "MrDV2 Timeline",
+  "description": "MVP Timeline JSON Schema for Mr.Director V2",
+  "type": "object",
+  "required": ["version", "project", "tracks"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "const": "1.0.0"
+    },
+    "project": {
+      "$ref": "#/$defs/ProjectMeta"
+    },
+    "media_pool": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/MediaAsset" },
+      "description": "Registry of all source media files referenced by clips",
+      "default": []
+    },
+    "tracks": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/Track" }
+    }
+  },
+  "$defs": {
+    "ProjectMeta": {
+      "type": "object",
+      "required": ["name", "width", "height", "fps"],
+      "properties": {
+        "name": { "type": "string" },
+        "width": { "type": "integer", "default": 1920 },
+        "height": { "type": "integer", "default": 1080 },
+        "fps": {
+          "type": "number",
+          "default": 30,
+          "enum": [23.976, 24, 25, 29.97, 30, 50, 59.94, 60]
+        }
+      }
+    },
+    "MediaAsset": {
+      "type": "object",
+      "required": ["id", "path", "type"],
+      "properties": {
+        "id": { "type": "string", "description": "Unique ID, referenced by clips" },
+        "path": { "type": "string", "description": "Absolute or project-relative file path" },
+        "type": { "type": "string", "enum": ["video", "audio", "image"] },
+        "duration_sec": { "type": "number", "description": "Source media duration in seconds" },
+        "width": { "type": "integer" },
+        "height": { "type": "integer" },
+        "sample_rate": { "type": "integer" },
+        "channels": { "type": "integer" }
+      }
+    },
+    "Track": {
+      "type": "object",
+      "required": ["id", "type", "clips"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "type": { "type": "string", "enum": ["video", "audio", "subtitle"] },
+        "locked": { "type": "boolean", "default": false },
+        "muted": { "type": "boolean", "default": false },
+        "clips": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Clip" }
+        }
+      }
+    },
+    "Clip": {
+      "type": "object",
+      "required": ["id", "type", "timeline_start_sec", "duration_sec"],
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "type": "string", "enum": ["video", "audio", "subtitle"] },
+        "media_id": {
+          "type": "string",
+          "description": "Reference to a MediaAsset.id in media_pool"
+        },
+        "source_in_sec": {
+          "type": "number",
+          "default": 0,
+          "description": "In-point in the source media (seconds)"
+        },
+        "source_out_sec": {
+          "type": "number",
+          "description": "Out-point in the source media (seconds)"
+        },
+        "timeline_start_sec": {
+          "type": "number",
+          "description": "Where this clip is placed on the timeline (seconds)"
+        },
+        "duration_sec": {
+          "type": "number",
+          "description": "Duration on the timeline after speed adjustment"
+        },
+        "speed": {
+          "type": "number",
+          "default": 1.0,
+          "minimum": 0.1,
+          "maximum": 16.0,
+          "description": "Playback speed multiplier. 2.0 = 2x faster"
+        },
+        "subtitle_text": {
+          "type": "string",
+          "description": "Only for subtitle clips - the text content"
+        },
+        "subtitle_style": {
+          "$ref": "#/$defs/SubtitleStyle"
+        }
+      }
+    },
+    "SubtitleStyle": {
+      "type": "object",
+      "properties": {
+        "font_family": { "type": "string", "default": "sans-serif" },
+        "font_size": { "type": "integer", "default": 48 },
+        "color": { "type": "string", "default": "#FFFFFF" },
+        "background": { "type": "string", "default": "rgba(0,0,0,0.6)" },
+        "position_y": {
+          "type": "number",
+          "default": 0.85,
+          "description": "0=top, 1=bottom, as fraction of frame height"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "name": "mrdv2",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --parallel -r dev",
+    "dev:frontend": "pnpm --filter @mrdv2/frontend dev",
+    "dev:backend": "pnpm --filter @mrdv2/backend dev",
+    "build": "pnpm -r build",
+    "generate:types": "pnpm --filter @mrdv2/shared generate"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}
