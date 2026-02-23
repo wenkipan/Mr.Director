@@ -1,223 +1,386 @@
-import { useRef, useEffect, useMemo } from 'react';
+import { useRef, useEffect, useMemo, useState, useCallback } from 'react';
 import type { TimelineProject } from '@mrdv2/shared';
+import TimelineCanvas from './TimelineCanvas';
+import TimelineClipLayer from './TimelineClipLayer';
+import TimelineTrackHeaders from './TimelineTrackHeaders';
+import { useTimelineSelection } from './useTimelineSelection';
+import { useTimelineDrag } from './useTimelineDrag';
+import {
+  HEADER_WIDTH,
+  RULER_HEIGHT,
+  TRACK_HEIGHT,
+  DEFAULT_PIXELS_PER_SEC,
+  MIN_PIXELS_PER_SEC,
+  MAX_PIXELS_PER_SEC,
+  ZOOM_FACTOR,
+} from './timelineConstants';
+import {
+  calcTotalDuration,
+  removeClipsFromTimeline,
+  generateClipId,
+  generateMediaId,
+  addClipToTimeline,
+  addTrackToTimeline,
+  generateTrackId,
+} from './timelineUtils';
 
 interface TimelineEditorProps {
   timeline: TimelineProject;
   currentTime: number; // seconds
   onSeek: (timeSec: number) => void;
+  onTimelineChange: (newTimeline: TimelineProject) => void;
 }
 
-const TRACK_HEIGHT = 40;
-const HEADER_WIDTH = 120;
-const PIXELS_PER_SEC = 80;
-
-const TRACK_COLORS: Record<string, string> = {
-  video: '#3b82f6',
-  audio: '#22c55e',
-  subtitle: '#eab308',
-};
-
-export default function TimelineEditor({ timeline, currentTime, onSeek }: TimelineEditorProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+export default function TimelineEditor({
+  timeline,
+  currentTime,
+  onSeek,
+  onTimelineChange,
+}: TimelineEditorProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const [containerHeight, setContainerHeight] = useState(250);
+  const [snapGuideTime, setSnapGuideTime] = useState<number | null>(null);
+  const [scrollLeft, setScrollLeft] = useState(0);
+  const [dropTarget, setDropTarget] = useState<{ trackIndex: number; timeSec: number } | null>(null);
+  const dragEnterCountRef = useRef(0);
 
-  const totalDuration = useMemo(() => {
-    let max = 1;
-    for (const track of timeline.tracks) {
-      for (const clip of track.clips) {
-        const end = clip.timeline_start_sec + clip.duration_sec;
-        if (end > max) max = end;
-      }
-    }
-    return max + 2; // add 2s padding
-  }, [timeline]);
+  const [pixelsPerSec, setPixelsPerSec] = useState(DEFAULT_PIXELS_PER_SEC);
+  const totalDuration = useMemo(() => calcTotalDuration(timeline), [timeline]);
 
-  // Convert vertical mouse wheel to horizontal scroll
+  // Selection
+  const { selectedClipIds, selectClip, clearSelection } = useTimelineSelection();
+
+  // Drag (snap is computed internally, excluding the dragged clip)
+  const { dragVisualState, startDrag } = useTimelineDrag(
+    timeline,
+    pixelsPerSec,
+    currentTime,
+    onTimelineChange,
+    setSnapGuideTime,
+  );
+
+  // Calculate canvas size
+  const canvasWidth = useMemo(() => {
+    const el = containerRef.current;
+    const minWidth = el ? el.clientWidth : 800;
+    return Math.max(minWidth, HEADER_WIDTH + totalDuration * pixelsPerSec);
+  }, [totalDuration, pixelsPerSec]);
+
+  // Observe container size
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => {
+      setContainerHeight(el.clientHeight);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // Wheel: Ctrl+wheel = zoom (anchored to cursor), plain wheel = horizontal scroll
+  const pixelsPerSecRef = useRef(pixelsPerSec);
+  pixelsPerSecRef.current = pixelsPerSec;
+
   useEffect(() => {
     const scrollEl = scrollRef.current;
     if (!scrollEl) return;
-
     const onWheel = (e: WheelEvent) => {
-      if (e.deltaY !== 0) {
-        e.preventDefault();
+      if (e.deltaY === 0) return;
+      e.preventDefault();
+
+      if (e.ctrlKey || e.metaKey) {
+        // Zoom: anchor to cursor position
+        const rect = scrollEl.getBoundingClientRect();
+        const cursorX = e.clientX - rect.left; // px from left edge of viewport
+        const oldPPS = pixelsPerSecRef.current;
+        // Time under cursor before zoom
+        const timeSec = (scrollEl.scrollLeft + cursorX - HEADER_WIDTH) / oldPPS;
+
+        const factor = e.deltaY < 0 ? ZOOM_FACTOR : 1 / ZOOM_FACTOR;
+        const newPPS = Math.min(MAX_PIXELS_PER_SEC, Math.max(MIN_PIXELS_PER_SEC, oldPPS * factor));
+        setPixelsPerSec(newPPS);
+
+        // Adjust scroll so the same time stays under cursor
+        scrollEl.scrollLeft = timeSec * newPPS - cursorX + HEADER_WIDTH;
+      } else {
         scrollEl.scrollLeft += e.deltaY;
       }
     };
-
     scrollEl.addEventListener('wheel', onWheel, { passive: false });
     return () => scrollEl.removeEventListener('wheel', onWheel);
+  }, []);
+
+  // Track scroll position for sticky track headers
+  useEffect(() => {
+    const scrollEl = scrollRef.current;
+    if (!scrollEl) return;
+    const onScroll = () => setScrollLeft(scrollEl.scrollLeft);
+    scrollEl.addEventListener('scroll', onScroll, { passive: true });
+    return () => scrollEl.removeEventListener('scroll', onScroll);
   }, []);
 
   // Auto-scroll to keep playhead visible
   useEffect(() => {
     const scrollEl = scrollRef.current;
     if (!scrollEl) return;
-
-    const playheadX = HEADER_WIDTH + currentTime * PIXELS_PER_SEC;
+    const playheadX = HEADER_WIDTH + currentTime * pixelsPerSec;
     const { scrollLeft, clientWidth } = scrollEl;
-    const visibleLeft = scrollLeft;
-    const visibleRight = scrollLeft + clientWidth;
-
-    // Scroll when playhead is near the right edge or past it
     const margin = clientWidth * 0.15;
-    if (playheadX > visibleRight - margin) {
+    if (playheadX > scrollLeft + clientWidth - margin) {
       scrollEl.scrollLeft = playheadX - clientWidth * 0.3;
-    } else if (playheadX < visibleLeft + HEADER_WIDTH) {
+    } else if (playheadX < scrollLeft + HEADER_WIDTH) {
       scrollEl.scrollLeft = Math.max(0, playheadX - HEADER_WIDTH - margin);
     }
-  }, [currentTime]);
+  }, [currentTime, pixelsPerSec]);
 
-  // Draw timeline
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+  // Click on empty area → seek
+  const handleBackgroundPointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      if (e.target !== e.currentTarget) return;
+      const scrollEl = scrollRef.current;
+      if (!scrollEl) return;
+      const rect = scrollEl.getBoundingClientRect();
+      const x = e.clientX - rect.left + scrollEl.scrollLeft - HEADER_WIDTH;
+      if (x >= 0) {
+        onSeek(Math.max(0, x / pixelsPerSec));
+      }
+      clearSelection();
+    },
+    [onSeek, pixelsPerSec, clearSelection],
+  );
 
-    const container = containerRef.current;
-    if (!container) return;
+  // --- Media drag-and-drop from MediaPanel ---
+  const calcDropTarget = useCallback(
+    (e: React.DragEvent) => {
+      const scrollEl = scrollRef.current;
+      if (!scrollEl) return null;
+      const rect = scrollEl.getBoundingClientRect();
+      const x = e.clientX - rect.left + scrollEl.scrollLeft - HEADER_WIDTH;
+      const y = e.clientY - rect.top - RULER_HEIGHT;
+      const trackIndex = Math.floor(y / TRACK_HEIGHT);
+      const timeSec = Math.max(0, x / pixelsPerSec);
+      if (trackIndex < 0 || trackIndex >= timeline.tracks.length) return null;
+      return { trackIndex, timeSec };
+    },
+    [pixelsPerSec, timeline.tracks.length],
+  );
 
-    const dpr = window.devicePixelRatio || 1;
-    const h = container.clientHeight;
-    const canvasWidth = Math.max(
-      container.clientWidth,
-      HEADER_WIDTH + totalDuration * PIXELS_PER_SEC,
-    );
+  const handleDragOver = useCallback(
+    (e: React.DragEvent) => {
+      if (!e.dataTransfer.types.includes('application/x-mrdv2-media')) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+      setDropTarget(calcDropTarget(e));
+    },
+    [calcDropTarget],
+  );
 
-    canvas.width = canvasWidth * dpr;
-    canvas.height = h * dpr;
-    canvas.style.width = `${canvasWidth}px`;
-    canvas.style.height = `${h}px`;
-    ctx.scale(dpr, dpr);
+  const handleDragEnter = useCallback(
+    (e: React.DragEvent) => {
+      if (!e.dataTransfer.types.includes('application/x-mrdv2-media')) return;
+      e.preventDefault();
+      dragEnterCountRef.current++;
+    },
+    [],
+  );
 
-    const tracksStartY = 30; // ruler height
+  const handleDragLeave = useCallback(
+    () => {
+      dragEnterCountRef.current--;
+      if (dragEnterCountRef.current <= 0) {
+        dragEnterCountRef.current = 0;
+        setDropTarget(null);
+      }
+    },
+    [],
+  );
 
-    // Background
-    ctx.fillStyle = '#18181b';
-    ctx.fillRect(0, 0, canvasWidth, h);
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      dragEnterCountRef.current = 0;
+      setDropTarget(null);
 
-    // Ruler
-    ctx.fillStyle = '#27272a';
-    ctx.fillRect(HEADER_WIDTH, 0, canvasWidth - HEADER_WIDTH, tracksStartY);
-    ctx.strokeStyle = '#3f3f46';
-    ctx.lineWidth = 1;
-    ctx.fillStyle = '#a1a1aa';
-    ctx.font = '10px monospace';
+      const raw = e.dataTransfer.getData('application/x-mrdv2-media');
+      if (!raw) return;
 
-    for (let t = 0; t <= totalDuration; t++) {
-      const x = HEADER_WIDTH + t * PIXELS_PER_SEC;
+      const media: { name: string; path: string; type: string } = JSON.parse(raw);
+      const target = calcDropTarget(e);
+      if (!target) return;
 
-      ctx.beginPath();
-      ctx.moveTo(x, tracksStartY - 8);
-      ctx.lineTo(x, tracksStartY);
-      ctx.stroke();
+      // Map media type to clip/track type
+      const clipType: 'video' | 'audio' = media.type === 'audio' ? 'audio' : 'video';
 
-      const label = t < 60 ? `${t}s` : `${Math.floor(t / 60)}:${(t % 60).toString().padStart(2, '0')}`;
-      ctx.fillText(label, x + 3, tracksStartY - 12);
+      // Find a compatible track: prefer the hovered track, otherwise find/create one
+      let targetTrack = timeline.tracks[target.trackIndex];
+      let targetTrackId = targetTrack.id;
+      let updatedTimeline = timeline;
 
-      // Half-second ticks
-      const halfX = x + PIXELS_PER_SEC / 2;
-      ctx.beginPath();
-      ctx.moveTo(halfX, tracksStartY - 4);
-      ctx.lineTo(halfX, tracksStartY);
-      ctx.stroke();
-    }
-
-    // Track headers and clip blocks
-    timeline.tracks.forEach((track, i) => {
-      const y = tracksStartY + i * TRACK_HEIGHT;
-
-      // Header background
-      ctx.fillStyle = '#27272a';
-      ctx.fillRect(0, y, HEADER_WIDTH, TRACK_HEIGHT);
-      ctx.strokeStyle = '#3f3f46';
-      ctx.strokeRect(0, y, HEADER_WIDTH, TRACK_HEIGHT);
-
-      // Header text
-      ctx.fillStyle = '#d4d4d8';
-      ctx.font = '11px sans-serif';
-      const label = track.name || `${track.type[0].toUpperCase()}${track.type.slice(1)}`;
-      ctx.fillText(label, 8, y + TRACK_HEIGHT / 2 + 4);
-
-      // Track lane background
-      ctx.fillStyle = i % 2 === 0 ? '#1c1c20' : '#202024';
-      ctx.fillRect(HEADER_WIDTH, y, canvasWidth - HEADER_WIDTH, TRACK_HEIGHT);
-
-      // Clips
-      const color = TRACK_COLORS[track.type] || '#6b7280';
-      for (const clip of track.clips) {
-        const cx = HEADER_WIDTH + clip.timeline_start_sec * PIXELS_PER_SEC;
-        const cw = clip.duration_sec * PIXELS_PER_SEC;
-        const cy = y + 4;
-        const ch = TRACK_HEIGHT - 8;
-
-        // Clip body
-        ctx.fillStyle = color + '99'; // with alpha
-        ctx.beginPath();
-        ctx.roundRect(cx, cy, Math.max(cw, 2), ch, 3);
-        ctx.fill();
-
-        // Clip border
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 1;
-        ctx.stroke();
-
-        // Clip label
-        if (cw > 40) {
-          ctx.fillStyle = '#fff';
-          ctx.font = '10px sans-serif';
-          const clipLabel =
-            clip.type === 'subtitle'
-              ? clip.subtitle_text?.slice(0, 20) || 'Sub'
-              : clip.media_id || clip.id;
-          ctx.save();
-          ctx.beginPath();
-          ctx.rect(cx + 2, cy, cw - 4, ch);
-          ctx.clip();
-          ctx.fillText(clipLabel, cx + 6, cy + ch / 2 + 3);
-          ctx.restore();
+      if (targetTrack.type !== clipType) {
+        // Try to find an existing compatible track
+        const compatibleTrack = timeline.tracks.find((t) => t.type === clipType);
+        if (compatibleTrack) {
+          targetTrackId = compatibleTrack.id;
+        } else {
+          // Create a new track of the correct type
+          const newTrackId = generateTrackId();
+          const count = timeline.tracks.filter((t) => t.type === clipType).length + 1;
+          const name = `${clipType.charAt(0).toUpperCase() + clipType.slice(1)} ${count}`;
+          updatedTimeline = addTrackToTimeline(timeline, {
+            id: newTrackId,
+            name,
+            type: clipType,
+            locked: false,
+            muted: false,
+            clips: [],
+          });
+          targetTrackId = newTrackId;
         }
       }
-    });
 
-    // Playhead
-    const playheadX = HEADER_WIDTH + currentTime * PIXELS_PER_SEC;
-    if (playheadX >= HEADER_WIDTH) {
-      ctx.strokeStyle = '#ef4444';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(playheadX, 0);
-      ctx.lineTo(playheadX, h);
-      ctx.stroke();
+      const mediaId = generateMediaId(media.path);
+      const defaultDuration = 5;
 
-      // Playhead triangle
-      ctx.fillStyle = '#ef4444';
-      ctx.beginPath();
-      ctx.moveTo(playheadX - 6, 0);
-      ctx.lineTo(playheadX + 6, 0);
-      ctx.lineTo(playheadX, 8);
-      ctx.closePath();
-      ctx.fill();
-    }
-  }, [timeline, currentTime, totalDuration]);
+      const clip = {
+        id: generateClipId(),
+        type: clipType,
+        media_id: mediaId,
+        source_in_sec: 0,
+        source_out_sec: defaultDuration,
+        timeline_start_sec: Math.max(0, target.timeSec),
+        duration_sec: defaultDuration,
+        speed: 1,
+      };
 
-  // Click to seek
-  const handleClick = (e: React.MouseEvent) => {
-    const scrollEl = scrollRef.current;
-    const canvas = canvasRef.current;
-    if (!scrollEl || !canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left - HEADER_WIDTH;
-    if (x < 0) return;
-    const timeSec = x / PIXELS_PER_SEC;
-    onSeek(Math.max(0, timeSec));
-  };
+      const mediaAsset = {
+        id: mediaId,
+        path: media.path,
+        type: media.type === 'audio' ? 'audio' as const : media.type === 'image' ? 'image' as const : 'video' as const,
+      };
+
+      onTimelineChange(addClipToTimeline(updatedTimeline, targetTrackId, clip, mediaAsset));
+    },
+    [timeline, calcDropTarget, onTimelineChange],
+  );
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isModKey = e.ctrlKey || e.metaKey;
+
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedClipIds.size > 0) {
+        e.preventDefault();
+        const newTimeline = removeClipsFromTimeline(timeline, selectedClipIds);
+        onTimelineChange(newTimeline);
+        clearSelection();
+      }
+
+      if (e.key === 'z' && isModKey && !e.shiftKey) {
+        e.preventDefault();
+        document.dispatchEvent(new CustomEvent('timeline:undo'));
+      }
+
+      if (e.key === 'z' && isModKey && e.shiftKey) {
+        e.preventDefault();
+        document.dispatchEvent(new CustomEvent('timeline:redo'));
+      }
+
+      if (e.key === 'Escape') {
+        clearSelection();
+      }
+    };
+
+    el.addEventListener('keydown', handleKeyDown);
+    return () => el.removeEventListener('keydown', handleKeyDown);
+  }, [selectedClipIds, timeline, onTimelineChange, clearSelection]);
 
   return (
-    <div ref={containerRef} className="w-full h-full">
-      <div ref={scrollRef} className="w-full h-full overflow-x-auto overflow-y-hidden cursor-pointer">
-        <canvas ref={canvasRef} onClick={handleClick} className="block" />
+    <div
+      ref={containerRef}
+      className="w-full h-full focus:outline-none"
+      tabIndex={0}
+    >
+      <div
+        ref={scrollRef}
+        className="w-full h-full overflow-x-auto overflow-y-hidden relative"
+        style={{ cursor: 'default' }}
+        onPointerDown={handleBackgroundPointerDown}
+        onDragOver={handleDragOver}
+        onDragEnter={handleDragEnter}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
+        <TimelineCanvas
+          timeline={timeline}
+          currentTime={currentTime}
+          totalDuration={totalDuration}
+          pixelsPerSec={pixelsPerSec}
+          snapGuideTime={snapGuideTime}
+          canvasWidth={canvasWidth}
+          height={containerHeight}
+        />
+
+        <TimelineTrackHeaders
+          timeline={timeline}
+          onTimelineChange={onTimelineChange}
+          scrollLeft={scrollLeft}
+        />
+
+        <TimelineClipLayer
+          timeline={timeline}
+          pixelsPerSec={pixelsPerSec}
+          selectedClipIds={selectedClipIds}
+          dragState={
+            dragVisualState
+              ? {
+                  clipId: dragVisualState.clipId,
+                  dragType: dragVisualState.dragType,
+                  offsetPx: dragVisualState.offsetPx,
+                  widthPx: dragVisualState.widthPx,
+                  leftPx: dragVisualState.leftPx,
+                }
+              : null
+          }
+          onClipSelect={selectClip}
+          onClipDragStart={startDrag}
+          onBackgroundClick={clearSelection}
+        />
+
+        {/* Drop target visual feedback */}
+        {dropTarget && (
+          <>
+            {/* Track highlight */}
+            <div
+              className="absolute pointer-events-none"
+              style={{
+                left: HEADER_WIDTH,
+                top: RULER_HEIGHT + dropTarget.trackIndex * TRACK_HEIGHT,
+                right: 0,
+                height: TRACK_HEIGHT,
+                backgroundColor: 'rgba(59, 130, 246, 0.15)',
+                borderTop: '1px solid rgba(59, 130, 246, 0.4)',
+                borderBottom: '1px solid rgba(59, 130, 246, 0.4)',
+                zIndex: 25,
+              }}
+            />
+            {/* Time position indicator */}
+            <div
+              className="absolute pointer-events-none"
+              style={{
+                left: HEADER_WIDTH + dropTarget.timeSec * pixelsPerSec,
+                top: RULER_HEIGHT,
+                width: 0,
+                height: timeline.tracks.length * TRACK_HEIGHT,
+                borderLeft: '2px dashed rgba(59, 130, 246, 0.7)',
+                zIndex: 25,
+              }}
+            />
+          </>
+        )}
       </div>
     </div>
   );

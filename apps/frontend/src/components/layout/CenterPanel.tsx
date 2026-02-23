@@ -3,11 +3,28 @@ import { Player, type PlayerRef } from '@remotion/player';
 import { useAppStore } from '../../stores/appStore';
 import { TimelineComposition } from '../../remotion/TimelineComposition';
 import { calculateTotalFrames } from '../../lib/timelineAdapter';
+import { useAutoSave } from '../../hooks/useAutoSave';
 import TimelineEditor from '../timeline/TimelineEditor';
 
 export default function CenterPanel() {
-  const { timeline, selectedMedia, currentFrame, setCurrentFrame, setPlaying } = useAppStore();
+  const { timeline, selectedMedia, currentFrame, setCurrentFrame, setPlaying, updateTimeline, undo, redo } =
+    useAppStore();
   const playerRef = useRef<PlayerRef>(null);
+
+  // Auto-save on timeline edits (1s debounce)
+  useAutoSave(1000);
+
+  // Listen for undo/redo custom events dispatched from TimelineEditor keyboard shortcuts
+  useEffect(() => {
+    const handleUndo = () => undo();
+    const handleRedo = () => redo();
+    document.addEventListener('timeline:undo', handleUndo);
+    document.addEventListener('timeline:redo', handleRedo);
+    return () => {
+      document.removeEventListener('timeline:undo', handleUndo);
+      document.removeEventListener('timeline:redo', handleRedo);
+    };
+  }, [undo, redo]);
 
   const handleTimelineSeek = useCallback(
     (timeSec: number) => {
@@ -19,9 +36,15 @@ export default function CenterPanel() {
     [timeline, setCurrentFrame],
   );
 
+  const handleTimelineChange = useCallback(
+    (newTimeline: typeof timeline) => {
+      if (!newTimeline) return;
+      updateTimeline(newTimeline);
+    },
+    [updateTimeline],
+  );
+
   // Sync player frame changes back to store
-  // Use !!timeline so the effect re-runs once when Player first mounts (null→object),
-  // but NOT on every subsequent timeline content update (object→object stays true).
   const hasTimeline = !!timeline;
   useEffect(() => {
     const player = playerRef.current;
@@ -75,6 +98,7 @@ export default function CenterPanel() {
             timeline={timeline}
             currentTime={currentFrame / fps}
             onSeek={handleTimelineSeek}
+            onTimelineChange={handleTimelineChange}
           />
         </div>
       </div>

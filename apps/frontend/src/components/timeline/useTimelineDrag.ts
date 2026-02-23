@@ -1,0 +1,298 @@
+import { useState, useCallback, useRef, useEffect } from 'react';
+import type { Clip, TimelineProject } from '@mrdv2/shared';
+import type { DragType } from './TimelineClip';
+import {
+  HEADER_WIDTH,
+  MIN_CLIP_DURATION_SEC,
+  SNAP_THRESHOLD_PX,
+} from './timelineConstants';
+import {
+  pxToSec,
+  secToPx,
+  wouldOverlap,
+  clamp,
+  findClipById,
+  updateClipInTimeline,
+  collectClipEdges,
+  findSnapPoint,
+} from './timelineUtils';
+
+export interface DragVisualState {
+  clipId: string;
+  dragType: DragType;
+  /** Pixel offset from original position (for 'move') */
+  offsetPx: number;
+  /** Override width in px (for trim) */
+  widthPx: number | null;
+  /** Override left in px (for trim-left) */
+  leftPx: number | null;
+}
+
+interface InternalDragState {
+  clipId: string;
+  trackId: string;
+  dragType: DragType;
+  originalClip: Clip;
+  startMouseX: number;
+  pixelsPerSec: number;
+  trackClips: Clip[];
+  mediaMaxDuration: number | null;
+}
+
+export function useTimelineDrag(
+  timeline: TimelineProject,
+  pixelsPerSec: number,
+  currentTime: number,
+  onTimelineChange: (newTimeline: TimelineProject) => void,
+  onSnapGuide: (timeSec: number | null) => void,
+) {
+  const [visualState, setVisualState] = useState<DragVisualState | null>(null);
+  const dragRef = useRef<InternalDragState | null>(null);
+  const visualRef = useRef<DragVisualState | null>(null);
+  const timelineRef = useRef(timeline);
+  const currentTimeRef = useRef(currentTime);
+  const onTimelineChangeRef = useRef(onTimelineChange);
+  const onSnapGuideRef = useRef(onSnapGuide);
+  const pixelsPerSecRef = useRef(pixelsPerSec);
+
+  timelineRef.current = timeline;
+  currentTimeRef.current = currentTime;
+  onTimelineChangeRef.current = onTimelineChange;
+  onSnapGuideRef.current = onSnapGuide;
+  pixelsPerSecRef.current = pixelsPerSec;
+
+  /** Compute snap targets on the fly, excluding the currently dragged clip */
+  const computeSnap = useCallback((timeSec: number): { snappedTime: number; didSnap: boolean } => {
+    const d = dragRef.current;
+    const tl = timelineRef.current;
+    const excludeId = d?.clipId;
+    const edges = collectClipEdges(tl, excludeId);
+    edges.push(currentTimeRef.current); // playhead
+    edges.push(0); // timeline start
+    const thresholdSec = SNAP_THRESHOLD_PX / pixelsPerSecRef.current;
+    return findSnapPoint(timeSec, edges, thresholdSec);
+  }, []);
+
+  const startDrag = useCallback(
+    (clipId: string, dragType: DragType, pointerX: number) => {
+      const tl = timelineRef.current;
+      const found = findClipById(tl, clipId);
+      if (!found) return;
+      const { clip, trackId } = found;
+      const track = tl.tracks.find((t) => t.id === trackId);
+      if (!track) return;
+
+      let mediaMaxDuration: number | null = null;
+      if (clip.media_id) {
+        const asset = tl.media_pool.find((m) => m.id === clip.media_id);
+        if (asset?.duration_sec) mediaMaxDuration = asset.duration_sec;
+      }
+
+      dragRef.current = {
+        clipId,
+        trackId,
+        dragType,
+        originalClip: { ...clip },
+        startMouseX: pointerX,
+        pixelsPerSec: pixelsPerSecRef.current,
+        trackClips: track.clips,
+        mediaMaxDuration,
+      };
+
+      visualRef.current = {
+        clipId,
+        dragType,
+        offsetPx: 0,
+        widthPx: null,
+        leftPx: null,
+      };
+      setVisualState(visualRef.current);
+
+      document.addEventListener('pointermove', handlePointerMove);
+      document.addEventListener('pointerup', handlePointerUp);
+    },
+    [],
+  );
+
+  const handlePointerMove = useCallback((e: PointerEvent) => {
+    const d = dragRef.current;
+    if (!d) return;
+    const onSnapGuideFn = onSnapGuideRef.current;
+    const deltaPx = e.clientX - d.startMouseX;
+    const deltaSec = pxToSec(deltaPx, d.pixelsPerSec);
+
+    if (d.dragType === 'move') {
+      let newStart = d.originalClip.timeline_start_sec + deltaSec;
+      newStart = Math.max(0, newStart);
+
+      // Snap start edge
+      const snapStart = computeSnap(newStart);
+      if (snapStart.didSnap) {
+        newStart = snapStart.snappedTime;
+        onSnapGuideFn(snapStart.snappedTime);
+      } else {
+        // Try snapping end edge
+        const newEnd = newStart + d.originalClip.duration_sec;
+        const snapEnd = computeSnap(newEnd);
+        if (snapEnd.didSnap) {
+          newStart = snapEnd.snappedTime - d.originalClip.duration_sec;
+          onSnapGuideFn(snapEnd.snappedTime);
+        } else {
+          onSnapGuideFn(null);
+        }
+      }
+
+      newStart = Math.max(0, newStart);
+
+      if (wouldOverlap(d.clipId, newStart, d.originalClip.duration_sec, d.trackClips)) {
+        return;
+      }
+
+      const offsetPx = secToPx(
+        newStart - d.originalClip.timeline_start_sec,
+        d.pixelsPerSec,
+      );
+      visualRef.current = {
+        clipId: d.clipId,
+        dragType: 'move',
+        offsetPx,
+        widthPx: null,
+        leftPx: null,
+      };
+      setVisualState(visualRef.current);
+
+    } else if (d.dragType === 'trim-left') {
+      const orig = d.originalClip;
+      const speed = orig.speed ?? 1;
+      const origSourceIn = orig.source_in_sec ?? 0;
+      const origSourceOut = orig.source_out_sec ?? origSourceIn + orig.duration_sec * speed;
+
+      let newSourceIn = origSourceIn + deltaSec * speed;
+      newSourceIn = clamp(newSourceIn, 0, origSourceOut - MIN_CLIP_DURATION_SEC * speed);
+
+      // When source_in decreases, clip starts earlier → timeline_start decreases
+      let newTimelineStart = orig.timeline_start_sec + (newSourceIn - origSourceIn) / speed;
+
+      // Snap the left edge
+      const snapResult = computeSnap(newTimelineStart);
+      if (snapResult.didSnap) {
+        newTimelineStart = snapResult.snappedTime;
+        onSnapGuideFn(snapResult.snappedTime);
+        // Recalculate source_in from the snapped start
+        newSourceIn = origSourceIn + (newTimelineStart - orig.timeline_start_sec) * speed;
+        newSourceIn = clamp(newSourceIn, 0, origSourceOut - MIN_CLIP_DURATION_SEC * speed);
+      } else {
+        onSnapGuideFn(null);
+      }
+
+      const finalDuration = (origSourceOut - newSourceIn) / speed;
+      const leftPx = HEADER_WIDTH + newTimelineStart * d.pixelsPerSec;
+      const widthPx = finalDuration * d.pixelsPerSec;
+
+      visualRef.current = {
+        clipId: d.clipId,
+        dragType: 'trim-left',
+        offsetPx: 0,
+        widthPx,
+        leftPx,
+      };
+      setVisualState(visualRef.current);
+
+    } else if (d.dragType === 'trim-right') {
+      const orig = d.originalClip;
+      const speed = orig.speed ?? 1;
+      const origSourceIn = orig.source_in_sec ?? 0;
+      const origSourceOut = orig.source_out_sec ?? origSourceIn + orig.duration_sec * speed;
+
+      let newSourceOut = origSourceOut + deltaSec * speed;
+      const minOut = origSourceIn + MIN_CLIP_DURATION_SEC * speed;
+      const maxOut = d.mediaMaxDuration ?? Infinity;
+      newSourceOut = clamp(newSourceOut, minOut, maxOut);
+
+      const newDuration = (newSourceOut - origSourceIn) / speed;
+      const newEnd = orig.timeline_start_sec + newDuration;
+
+      // Snap the right edge
+      const snapResult = computeSnap(newEnd);
+      if (snapResult.didSnap) {
+        const finalEnd = snapResult.snappedTime;
+        onSnapGuideFn(finalEnd);
+        newSourceOut = origSourceIn + (finalEnd - orig.timeline_start_sec) * speed;
+        newSourceOut = clamp(newSourceOut, minOut, maxOut);
+      } else {
+        onSnapGuideFn(null);
+      }
+
+      const finalDuration = (newSourceOut - origSourceIn) / speed;
+      const widthPx = finalDuration * d.pixelsPerSec;
+
+      visualRef.current = {
+        clipId: d.clipId,
+        dragType: 'trim-right',
+        offsetPx: 0,
+        widthPx,
+        leftPx: null,
+      };
+      setVisualState(visualRef.current);
+    }
+  }, [computeSnap]);
+
+  const handlePointerUp = useCallback(() => {
+    const d = dragRef.current;
+    if (!d) return;
+
+    const vs = visualRef.current;
+    const tl = timelineRef.current;
+
+    if (vs) {
+      const orig = d.originalClip;
+      const speed = orig.speed ?? 1;
+      let newTimeline = tl;
+
+      if (d.dragType === 'move') {
+        const deltaSec = pxToSec(vs.offsetPx, d.pixelsPerSec);
+        const newStart = Math.max(0, orig.timeline_start_sec + deltaSec);
+        newTimeline = updateClipInTimeline(tl, d.clipId, {
+          timeline_start_sec: newStart,
+        });
+      } else if (d.dragType === 'trim-left' && vs.leftPx !== null && vs.widthPx !== null) {
+        const newStart = pxToSec(vs.leftPx - HEADER_WIDTH, d.pixelsPerSec);
+        const newDuration = pxToSec(vs.widthPx, d.pixelsPerSec);
+        const origSourceOut = orig.source_out_sec ?? (orig.source_in_sec ?? 0) + orig.duration_sec * speed;
+        const newSourceIn = origSourceOut - newDuration * speed;
+        newTimeline = updateClipInTimeline(tl, d.clipId, {
+          timeline_start_sec: newStart,
+          duration_sec: newDuration,
+          source_in_sec: Math.max(0, newSourceIn),
+        });
+      } else if (d.dragType === 'trim-right' && vs.widthPx !== null) {
+        const newDuration = pxToSec(vs.widthPx, d.pixelsPerSec);
+        const origSourceIn = orig.source_in_sec ?? 0;
+        const newSourceOut = origSourceIn + newDuration * speed;
+        newTimeline = updateClipInTimeline(tl, d.clipId, {
+          duration_sec: newDuration,
+          source_out_sec: newSourceOut,
+        });
+      }
+
+      onTimelineChangeRef.current(newTimeline);
+    }
+
+    onSnapGuideRef.current(null);
+    dragRef.current = null;
+    visualRef.current = null;
+    setVisualState(null);
+
+    document.removeEventListener('pointermove', handlePointerMove);
+    document.removeEventListener('pointerup', handlePointerUp);
+  }, [handlePointerMove]);
+
+  useEffect(() => {
+    return () => {
+      document.removeEventListener('pointermove', handlePointerMove);
+      document.removeEventListener('pointerup', handlePointerUp);
+    };
+  }, [handlePointerMove, handlePointerUp]);
+
+  return { dragVisualState: visualState, startDrag };
+}

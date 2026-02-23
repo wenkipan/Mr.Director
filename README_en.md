@@ -33,9 +33,13 @@ Don't want to rely on cloud LLMs? You can use local models — just might need t
 
 Most importantly, it's open source. Configure it however you want.
 
-You can even provide an editing style or template in the system prompt, or let the LLM summarize your editing style from each conversation.
+You can even provide an editing style or template in the system prompt, or let the LLM summarize your editing style from each conversation.(good idea, see you in todos)
 
 It also has shell access — the first time I used it, I forgot to specify the working directory, and it found the files I described on its own.
+
+## quicklook
+
+![描述文字](docs/image.png) 
 
 ## Getting Started
 
@@ -71,7 +75,7 @@ Optional configuration:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `MRDV2_GEMINI_BASE_URL` | `""` | Custom API endpoint (proxy/relay) |
-| `MRDV2_GEMINI_MODEL` | `gemini-2.5-flash` | Model name |
+| `MRDV2_GEMINI_MODEL` | `gemini-2.5-flash` | Model name（myself using 3.1, anyproblem plz issue ） |
 | `MRDV2_WHISPER_MODEL_SIZE` | `medium` | Whisper model size (tiny/small/base/medium/large) |
 | `MRDV2_WHISPER_DEVICE` | `auto` | Compute device (auto/cuda/cpu) |
 

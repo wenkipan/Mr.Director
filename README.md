@@ -37,6 +37,10 @@ Agent 会用 Gemini 看懂视频画面，再用本地 Whisper 把语音一句一
 
 我还给他配备了shell,第一次使用的时候我忘记给出工作路径，他能自己找到我描述的文件
 
+## quicklook
+
+![描述文字](docs/image.png) 
+
 ## 跑起来
 
 ### 环境要求
@@ -71,7 +75,7 @@ MRDV2_GEMINI_API_KEY=your-key-here
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `MRDV2_GEMINI_BASE_URL` | `""` | 自定义 API 端点（代理/中转） |
-| `MRDV2_GEMINI_MODEL` | `gemini-2.5-flash` | 模型名称 |
+| `MRDV2_GEMINI_MODEL` | `gemini-2.5-flash` | 模型名称(我用3.1的，也只测过3.1,有问题issue见) |
 | `MRDV2_WHISPER_MODEL_SIZE` | `medium` | Whisper 模型大小（tiny/small/base/medium/large） |
 | `MRDV2_WHISPER_DEVICE` | `auto` | 计算设备（auto/cuda/cpu） |
 

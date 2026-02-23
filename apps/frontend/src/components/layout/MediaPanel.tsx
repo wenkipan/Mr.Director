@@ -118,6 +118,22 @@ export default function MediaPanel() {
           <button
             key={file.path}
             onClick={() => handleFileClick(file)}
+            draggable={file.type !== 'directory'}
+            onDragStart={(e) => {
+              if (file.type === 'directory') {
+                e.preventDefault();
+                return;
+              }
+              e.dataTransfer.setData(
+                'application/x-mrdv2-media',
+                JSON.stringify({ name: file.name, path: file.path, type: file.type }),
+              );
+              e.dataTransfer.effectAllowed = 'copy';
+              (e.currentTarget as HTMLElement).style.opacity = '0.4';
+            }}
+            onDragEnd={(e) => {
+              (e.currentTarget as HTMLElement).style.opacity = '';
+            }}
             className={`w-full text-left px-3 py-2 flex items-center gap-2 hover:bg-zinc-800 transition-colors border-b border-zinc-800/50 ${
               selectedMedia === file.path ? 'bg-blue-950/40 border-l-2 border-l-blue-500' : ''
             }`}

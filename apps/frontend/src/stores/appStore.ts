@@ -15,10 +15,21 @@ export interface ChatMessage {
   timestamp?: string;
 }
 
+const MAX_UNDO = 50;
+
 interface AppStore {
   // Timeline state
   timeline: TimelineProject | null;
   setTimeline: (t: TimelineProject | null) => void;
+
+  // Timeline editing (with undo support)
+  updateTimeline: (newTimeline: TimelineProject) => void;
+  undoStack: TimelineProject[];
+  redoStack: TimelineProject[];
+  undo: () => void;
+  redo: () => void;
+  timelineDirty: boolean;
+  setTimelineDirty: (d: boolean) => void;
 
   // Playback state
   currentFrame: number;
@@ -50,10 +61,55 @@ interface AppStore {
 
 const API_BASE = '/api';
 
-export const useAppStore = create<AppStore>((set) => ({
+export const useAppStore = create<AppStore>((set, get) => ({
   // Timeline
   timeline: null,
-  setTimeline: (t) => set({ timeline: t }),
+  setTimeline: (t) => set({ timeline: t, undoStack: [], redoStack: [] }),
+
+  // Timeline editing with undo
+  undoStack: [],
+  redoStack: [],
+  timelineDirty: false,
+  setTimelineDirty: (d) => set({ timelineDirty: d }),
+
+  updateTimeline: (newTimeline) => {
+    const { timeline, undoStack } = get();
+    if (!timeline) {
+      set({ timeline: newTimeline, timelineDirty: true });
+      return;
+    }
+    const newUndo = [...undoStack, timeline].slice(-MAX_UNDO);
+    set({
+      timeline: newTimeline,
+      undoStack: newUndo,
+      redoStack: [],
+      timelineDirty: true,
+    });
+  },
+
+  undo: () => {
+    const { timeline, undoStack, redoStack } = get();
+    if (undoStack.length === 0 || !timeline) return;
+    const prev = undoStack[undoStack.length - 1];
+    set({
+      timeline: prev,
+      undoStack: undoStack.slice(0, -1),
+      redoStack: [...redoStack, timeline],
+      timelineDirty: true,
+    });
+  },
+
+  redo: () => {
+    const { timeline, undoStack, redoStack } = get();
+    if (redoStack.length === 0 || !timeline) return;
+    const next = redoStack[redoStack.length - 1];
+    set({
+      timeline: next,
+      undoStack: [...undoStack, timeline!],
+      redoStack: redoStack.slice(0, -1),
+      timelineDirty: true,
+    });
+  },
 
   // Playback
   currentFrame: 0,

@@ -21,6 +21,15 @@ export async function getProject(projectId: string) {
   return res.json();
 }
 
+export async function updateTimeline(projectId: string, timeline: any): Promise<void> {
+  const res = await fetch(`${API_BASE}/projects/${projectId}/timeline`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(timeline),
+  });
+  if (!res.ok) throw new Error(`Failed to save timeline: ${res.statusText}`);
+}
+
 export async function sendChatMessage(message: string, projectId: string) {
   const res = await fetch(`${API_BASE}/chat`, {
     method: 'POST',
