@@ -30,6 +30,22 @@ export async function updateTimeline(projectId: string, timeline: any): Promise<
   if (!res.ok) throw new Error(`Failed to save timeline: ${res.statusText}`);
 }
 
+export async function startExport(projectId: string, format: string = 'mp4') {
+  const res = await fetch(`${API_BASE}/export`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project_id: projectId, format }),
+  });
+  if (!res.ok) throw new Error(`Failed to start export: ${res.statusText}`);
+  return res.json();
+}
+
+export async function getExportStatus(exportId: string) {
+  const res = await fetch(`${API_BASE}/export/${exportId}/status`);
+  if (!res.ok) throw new Error(`Failed to get export status: ${res.statusText}`);
+  return res.json();
+}
+
 export async function sendChatMessage(message: string, projectId: string) {
   const res = await fetch(`${API_BASE}/chat`, {
     method: 'POST',

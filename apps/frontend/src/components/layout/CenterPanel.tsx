@@ -5,6 +5,7 @@ import { TimelineComposition } from '../../remotion/TimelineComposition';
 import { calculateTotalFrames } from '../../lib/timelineAdapter';
 import { useAutoSave } from '../../hooks/useAutoSave';
 import TimelineEditor from '../timeline/TimelineEditor';
+import Toolbar from './Toolbar';
 
 export default function CenterPanel() {
   const { timeline, selectedMedia, currentFrame, setCurrentFrame, setPlaying, updateTimeline, undo, redo } =
@@ -77,6 +78,7 @@ export default function CenterPanel() {
   if (timeline && timeline.tracks.length > 0) {
     return (
       <div className="h-full flex flex-col bg-zinc-950">
+        <Toolbar />
         {/* Remotion Player */}
         <div className="flex-1 flex items-center justify-center bg-black overflow-hidden">
           <Player
@@ -108,6 +110,7 @@ export default function CenterPanel() {
   // No timeline — show simple media preview or empty state
   return (
     <div className="h-full flex flex-col bg-zinc-950">
+      <Toolbar />
       <div className="flex-1 flex items-center justify-center bg-black relative">
         {selectedMedia ? (
           <video

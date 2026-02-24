@@ -63,7 +63,4 @@ async def chat_message(req: ChatRequest) -> ChatResponse:
         logger.exception("Agent error")
         response_text = f"Sorry, an error occurred: {str(e)}"
 
-    # Broadcast the agent's final message via WebSocket too
-    await ws_manager.broadcast_agent_message(state.project_id, response_text)
-
     return ChatResponse(message=response_text)

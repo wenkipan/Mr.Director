@@ -58,6 +58,7 @@ export default function TimelineEditor({
     currentTime,
     onTimelineChange,
     setSnapGuideTime,
+    onSeek,
   );
 
   // Calculate canvas size

@@ -15,6 +15,19 @@ export interface ChatMessage {
   timestamp?: string;
 }
 
+export interface ToolCallProgress {
+  toolName: string;
+  toolArgs?: Record<string, string>;
+  status: 'running' | 'completed' | 'error';
+  resultSummary?: string;
+  iteration: number;
+}
+
+export interface AgentProgress {
+  isActive: boolean;
+  toolCalls: ToolCallProgress[];
+}
+
 const MAX_UNDO = 50;
 
 interface AppStore {
@@ -53,6 +66,12 @@ interface AppStore {
   // WebSocket connection
   wsConnected: boolean;
   setWsConnected: (c: boolean) => void;
+
+  // Agent progress
+  agentProgress: AgentProgress;
+  onToolStart: (toolName: string, toolArgs: Record<string, string>, iteration: number) => void;
+  onToolEnd: (toolName: string, resultSummary: string, isError: boolean) => void;
+  onAgentDone: () => void;
 
   // Project
   projectId: string | null;
@@ -133,6 +152,35 @@ export const useAppStore = create<AppStore>((set, get) => ({
   // WebSocket
   wsConnected: false,
   setWsConnected: (c) => set({ wsConnected: c }),
+
+  // Agent progress
+  agentProgress: { isActive: false, toolCalls: [] },
+
+  onToolStart: (toolName, toolArgs, iteration) =>
+    set((s) => ({
+      agentProgress: {
+        isActive: true,
+        toolCalls: [
+          ...s.agentProgress.toolCalls,
+          { toolName, toolArgs, status: 'running', iteration },
+        ],
+      },
+    })),
+
+  onToolEnd: (toolName, resultSummary, isError) =>
+    set((s) => ({
+      agentProgress: {
+        ...s.agentProgress,
+        toolCalls: s.agentProgress.toolCalls.map((tc) =>
+          tc.toolName === toolName && tc.status === 'running'
+            ? { ...tc, status: isError ? 'error' : 'completed', resultSummary }
+            : tc
+        ),
+      },
+    })),
+
+  onAgentDone: () =>
+    set({ agentProgress: { isActive: false, toolCalls: [] } }),
 
   // Project
   projectId: localStorage.getItem('mrdv2_projectId'),

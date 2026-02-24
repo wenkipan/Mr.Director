@@ -79,13 +79,16 @@ class ReActAgent:
                 )
             except Exception as e:
                 logger.error(f"Gemini API error: {e}")
+                await ws_manager.broadcast_agent_progress(state.project_id, event="agent_done")
                 return f"Sorry, I encountered an error communicating with the AI model: {str(e)}"
 
             if not response.candidates:
+                await ws_manager.broadcast_agent_progress(state.project_id, event="agent_done")
                 return "Sorry, I didn't get a valid response. Please try again."
 
             candidate = response.candidates[0]
             if not candidate.content or not candidate.content.parts:
+                await ws_manager.broadcast_agent_progress(state.project_id, event="agent_done")
                 return "Sorry, I received an empty response. Please try again."
 
             # Process response parts
@@ -102,13 +105,31 @@ class ReActAgent:
 
                     logger.info(f"Tool call: {tool_name}({json.dumps(tool_args, ensure_ascii=False)[:200]})")
 
-                    # Broadcast thinking status
-                    await ws_manager.broadcast_agent_thinking(state.project_id, tool_name)
+                    # Broadcast tool_start progress
+                    await ws_manager.broadcast_agent_progress(
+                        state.project_id,
+                        event="tool_start",
+                        tool_name=tool_name,
+                        tool_args=tool_args,
+                        iteration=iteration + 1,
+                    )
 
                     # Execute the tool
                     result = await registry.execute(tool_name, tool_args, state)
 
                     logger.info(f"Tool result: {json.dumps(result, ensure_ascii=False)[:200]}")
+
+                    # Broadcast tool_end progress
+                    is_error = "error" in result
+                    result_summary = json.dumps(result, ensure_ascii=False)[:300]
+                    await ws_manager.broadcast_agent_progress(
+                        state.project_id,
+                        event="tool_end",
+                        tool_name=tool_name,
+                        result_summary=result_summary,
+                        is_error=is_error,
+                        iteration=iteration + 1,
+                    )
 
                     # Add function call to history
                     state.conversation_history.append({
@@ -146,6 +167,7 @@ class ReActAgent:
                     "role": "model",
                     "parts": [{"text": final_text}],
                 })
+                await ws_manager.broadcast_agent_progress(state.project_id, event="agent_done")
                 return final_text
 
             # If there were function calls, continue the loop
@@ -159,8 +181,10 @@ class ReActAgent:
                     "role": "model",
                     "parts": [{"text": final_text}],
                 })
+                await ws_manager.broadcast_agent_progress(state.project_id, event="agent_done")
                 return final_text
 
+        await ws_manager.broadcast_agent_progress(state.project_id, event="agent_done")
         return "I've reached the maximum number of reasoning steps. Please try breaking your request into smaller parts."
 
 

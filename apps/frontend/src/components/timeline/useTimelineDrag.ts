@@ -45,6 +45,7 @@ export function useTimelineDrag(
   currentTime: number,
   onTimelineChange: (newTimeline: TimelineProject) => void,
   onSnapGuide: (timeSec: number | null) => void,
+  onSeek: (timeSec: number) => void,
 ) {
   const [visualState, setVisualState] = useState<DragVisualState | null>(null);
   const dragRef = useRef<InternalDragState | null>(null);
@@ -53,12 +54,14 @@ export function useTimelineDrag(
   const currentTimeRef = useRef(currentTime);
   const onTimelineChangeRef = useRef(onTimelineChange);
   const onSnapGuideRef = useRef(onSnapGuide);
+  const onSeekRef = useRef(onSeek);
   const pixelsPerSecRef = useRef(pixelsPerSec);
 
   timelineRef.current = timeline;
   currentTimeRef.current = currentTime;
   onTimelineChangeRef.current = onTimelineChange;
   onSnapGuideRef.current = onSnapGuide;
+  onSeekRef.current = onSeek;
   pixelsPerSecRef.current = pixelsPerSec;
 
   /** Compute snap targets on the fly, excluding the currently dragged clip */
@@ -160,6 +163,7 @@ export function useTimelineDrag(
         leftPx: null,
       };
       setVisualState(visualRef.current);
+      onSeekRef.current(newStart);
 
     } else if (d.dragType === 'trim-left') {
       const orig = d.originalClip;
@@ -197,6 +201,7 @@ export function useTimelineDrag(
         leftPx,
       };
       setVisualState(visualRef.current);
+      onSeekRef.current(newTimelineStart);
 
     } else if (d.dragType === 'trim-right') {
       const orig = d.originalClip;
@@ -234,6 +239,7 @@ export function useTimelineDrag(
         leftPx: null,
       };
       setVisualState(visualRef.current);
+      onSeekRef.current(orig.timeline_start_sec + finalDuration);
     }
   }, [computeSnap]);
 

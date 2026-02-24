@@ -40,6 +40,8 @@ It also has shell access — the first time I used it, I forgot to specify the w
 ## quicklook
 
 ![描述文字](docs/image.png) 
+![描述文字](docs/image2.png) 
+![描述文字](docs/image4.png) 
 
 ## Getting Started
 

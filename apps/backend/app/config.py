@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     whisper_device: str = "auto"
     allowed_media_dirs: list[str] = []
     projects_dir: str = "./projects"
+    exports_dir: str = "./projects/exports"
     cors_origins: list[str] = ["http://localhost:5173"]
     host: str = "0.0.0.0"
     port: int = 8000

@@ -40,6 +40,8 @@ Agent 会用 Gemini 看懂视频画面，再用本地 Whisper 把语音一句一
 ## quicklook
 
 ![描述文字](docs/image.png) 
+![描述文字](docs/image2.png) 
+![描述文字](docs/image4.png) 
 
 ## 跑起来
 
@@ -126,6 +128,8 @@ webgpu+WGSL：调色
 剪辑风格个性化
 
 当前timeline采用自定义json,添加json转为otio或FCPXML7
+
+artlist寻找最符合描述风格的配乐
 
 SPEC.md 也记录了一些，不想再重复写了
 

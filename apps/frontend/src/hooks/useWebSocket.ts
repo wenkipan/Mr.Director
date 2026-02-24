@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useAppStore } from '../stores/appStore';
 
 export function useWebSocket(projectId: string | null) {
-  const { setTimeline, addMessage, setWsConnected } = useAppStore();
+  const { setTimeline, addMessage, setWsConnected, onToolStart, onToolEnd, onAgentDone } = useAppStore();
   const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
@@ -25,11 +25,33 @@ export function useWebSocket(projectId: string | null) {
             setTimeline(msg.data);
             break;
           case 'agent_message':
-            addMessage({ role: 'assistant', content: msg.data.text });
+            // Legacy — no longer used (REST response is canonical)
             break;
           case 'agent_thinking':
-            // Could show a thinking indicator
+            // Legacy — superseded by agent_progress
             break;
+          case 'export_progress': {
+            const { export_id, progress, status } = msg.data;
+            document.dispatchEvent(
+              new CustomEvent('export:progress', { detail: { export_id, progress, status } })
+            );
+            break;
+          }
+          case 'agent_progress': {
+            const { event: evt, tool_name, tool_args, result_summary, is_error, iteration } = msg.data;
+            switch (evt) {
+              case 'tool_start':
+                onToolStart(tool_name, tool_args || {}, iteration);
+                break;
+              case 'tool_end':
+                onToolEnd(tool_name, result_summary || '', is_error);
+                break;
+              case 'agent_done':
+                onAgentDone();
+                break;
+            }
+            break;
+          }
         }
       } catch (e) {
         console.error('WebSocket message parse error:', e);
@@ -44,7 +66,7 @@ export function useWebSocket(projectId: string | null) {
       ws.close();
       wsRef.current = null;
     };
-  }, [projectId, setTimeline, addMessage, setWsConnected]);
+  }, [projectId, setTimeline, addMessage, setWsConnected, onToolStart, onToolEnd, onAgentDone]);
 
   return wsRef;
 }

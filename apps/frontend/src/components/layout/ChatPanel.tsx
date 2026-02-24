@@ -1,11 +1,12 @@
 import { useState, useCallback } from 'react';
 import { useAppStore } from '../../stores/appStore';
 import { sendChatMessage } from '../../lib/api';
+import AgentProgressDisplay from '../chat/AgentProgressDisplay';
 
 export default function ChatPanel() {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
-  const { messages, addMessage, projectId } = useAppStore();
+  const { messages, addMessage, projectId, onAgentDone } = useAppStore();
 
   const handleSend = useCallback(async () => {
     const text = input.trim();
@@ -24,8 +25,9 @@ export default function ChatPanel() {
       addMessage({ role: 'system', content: `Error: ${e.message}` });
     } finally {
       setSending(false);
+      onAgentDone(); // Safety reset in case WS disconnected
     }
-  }, [input, sending, projectId, addMessage]);
+  }, [input, sending, projectId, addMessage, onAgentDone]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -61,9 +63,7 @@ export default function ChatPanel() {
             <div className="whitespace-pre-wrap">{msg.content}</div>
           </div>
         ))}
-        {sending && (
-          <div className="text-zinc-500 text-sm animate-pulse">Thinking...</div>
-        )}
+        <AgentProgressDisplay />
       </div>
 
       {/* Input */}
