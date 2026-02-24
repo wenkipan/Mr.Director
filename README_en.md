@@ -126,7 +126,7 @@ Effects
 
 Personalized editing styles
 
-Timeline JSON export to OTIO or FCPXML7
+~~Timeline JSON export to OTIO or FCPXML7~~ (done...maybe? OTIO has no dedicated subtitle support at all — when exporting to DaVinci Resolve and Kdenlive, subtitles were lost, plus all kinds of bizarre bugs. Using a video editor on Linux is truly pain)
 
 See SPEC.md for more details.
 

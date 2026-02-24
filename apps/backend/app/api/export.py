@@ -11,13 +11,24 @@ from app.config import settings
 from app.models.timeline import TimelineProject
 from app.services.export_jobs import create_job, get_job
 from app.services.ffmpeg_export import run_export
+from app.services.otio_export import export_otio_file
+from app.services.fcpxml_export import export_fcpxml_file
+from app.services.srt_export import generate_srt_string
 
 router = APIRouter()
+
+_MIME_TYPES: dict[str, str] = {
+    ".mp4": "video/mp4",
+    ".otio": "application/json",
+    ".fcpxml": "application/xml",
+    ".srt": "text/plain; charset=utf-8",
+}
 
 
 class ExportRequest(BaseModel):
     project_id: str
     format: str = "mp4"
+    include_srt: bool = True
 
 
 def _exports_dir() -> Path:
@@ -32,29 +43,61 @@ def _projects_dir() -> Path:
     return d
 
 
-@router.post("")
-async def start_export(req: ExportRequest):
-    """Start a video export job."""
-    # Load timeline
-    project_path = _projects_dir() / f"{req.project_id}.json"
+def _load_timeline(project_id: str) -> TimelineProject:
+    project_path = _projects_dir() / f"{project_id}.json"
     if not project_path.exists():
-        raise HTTPException(status_code=404, detail=f"Project not found: {req.project_id}")
+        raise HTTPException(status_code=404, detail=f"Project not found: {project_id}")
 
     data = json.loads(project_path.read_text())
     timeline = TimelineProject(**data)
 
     if not timeline.tracks:
         raise HTTPException(status_code=400, detail="Timeline has no tracks to export")
+    return timeline
 
-    # Create export job
+
+@router.post("")
+async def start_export(req: ExportRequest):
+    """Start an export. OTIO/FCPXML return files directly; MP4 uses async job."""
+    timeline = _load_timeline(req.project_id)
     export_id = f"exp_{int.from_bytes(os.urandom(4), 'big')}"
-    output_path = str(_exports_dir() / f"{export_id}.{req.format}")
+    exports_dir = _exports_dir()
 
+    # ── Synchronous interchange formats ───────────────────────
+    if req.format in ("otio", "fcpxml"):
+        suffix = ".otio" if req.format == "otio" else ".fcpxml"
+        output_path = str(exports_dir / f"{export_id}{suffix}")
+
+        if req.format == "otio":
+            export_otio_file(timeline, output_path)
+        else:
+            export_fcpxml_file(timeline, output_path)
+
+        # Companion SRT
+        srt_available = False
+        if req.include_srt:
+            srt_content = generate_srt_string(timeline)
+            if srt_content:
+                srt_path = exports_dir / f"{export_id}.srt"
+                srt_path.write_text(srt_content, encoding="utf-8")
+                srt_available = True
+
+        filename = f"{req.project_id}_export{suffix}"
+        media_type = _MIME_TYPES.get(suffix, "application/octet-stream")
+        return FileResponse(
+            path=output_path,
+            filename=filename,
+            media_type=media_type,
+            headers={
+                "X-SRT-Available": "true" if srt_available else "false",
+                "X-Export-Id": export_id,
+            },
+        )
+
+    # ── Async video export (existing MP4 flow) ────────────────
+    output_path = str(exports_dir / f"{export_id}.{req.format}")
     job = create_job(export_id, req.project_id, output_path)
-
-    # Launch background render
     asyncio.create_task(run_export(export_id, req.project_id, timeline, output_path))
-
     return {"export_id": export_id, "status": job.status}
 
 
@@ -75,7 +118,7 @@ async def export_status(export_id: str):
 
 @router.get("/{export_id}/download")
 async def download_export(export_id: str):
-    """Download the exported video file."""
+    """Download the exported file."""
     job = get_job(export_id)
     if job is None:
         raise HTTPException(status_code=404, detail=f"Export job not found: {export_id}")
@@ -87,9 +130,20 @@ async def download_export(export_id: str):
     if not output_path.exists():
         raise HTTPException(status_code=404, detail="Export file not found")
 
-    filename = f"{job.project_id}_export{output_path.suffix}"
+    suffix = output_path.suffix.lower()
+    media_type = _MIME_TYPES.get(suffix, "application/octet-stream")
+    filename = f"{job.project_id}_export{suffix}"
+    return FileResponse(path=str(output_path), filename=filename, media_type=media_type)
+
+
+@router.get("/{export_id}/srt")
+async def download_srt(export_id: str):
+    """Download the companion SRT subtitle file for an interchange export."""
+    srt_path = _exports_dir() / f"{export_id}.srt"
+    if not srt_path.exists():
+        raise HTTPException(status_code=404, detail="SRT file not found for this export")
     return FileResponse(
-        path=str(output_path),
-        filename=filename,
-        media_type="video/mp4",
+        path=str(srt_path),
+        filename=f"{export_id}.srt",
+        media_type="text/plain; charset=utf-8",
     )

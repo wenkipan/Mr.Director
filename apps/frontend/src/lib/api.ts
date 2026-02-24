@@ -40,6 +40,45 @@ export async function startExport(projectId: string, format: string = 'mp4') {
   return res.json();
 }
 
+function _triggerDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+export async function exportInterchange(
+  projectId: string,
+  format: 'otio' | 'fcpxml',
+  includeSrt: boolean = true,
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/export`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project_id: projectId, format, include_srt: includeSrt }),
+  });
+  if (!res.ok) throw new Error(`Failed to export ${format}: ${res.statusText}`);
+
+  const blob = await res.blob();
+  const ext = format === 'otio' ? '.otio' : '.fcpxml';
+  _triggerDownload(blob, `${projectId}_export${ext}`);
+
+  // Download companion SRT if available
+  const exportId = res.headers.get('X-Export-Id');
+  const srtAvailable = res.headers.get('X-SRT-Available');
+  if (srtAvailable === 'true' && exportId) {
+    const srtRes = await fetch(`${API_BASE}/export/${exportId}/srt`);
+    if (srtRes.ok) {
+      const srtBlob = await srtRes.blob();
+      _triggerDownload(srtBlob, `${projectId}_subtitles.srt`);
+    }
+  }
+}
+
 export async function getExportStatus(exportId: string) {
   const res = await fetch(`${API_BASE}/export/${exportId}/status`);
   if (!res.ok) throw new Error(`Failed to get export status: ${res.statusText}`);

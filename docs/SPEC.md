@@ -79,6 +79,6 @@ Remotion 渲染预览 + Timeline Editor 展示
         ↓
 用户对话调整 → Agent 修改 Timeline JSON → 循环
         ↓（仅导出时）
-Timeline JSON → OTIO → FCPXML7 等行业标准格式
+Timeline JSON → OTIO → FCP7XML 等行业标准格式
 
 

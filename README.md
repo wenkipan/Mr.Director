@@ -127,7 +127,7 @@ webgpu+WGSL：调色
 
 剪辑风格个性化
 
-当前timeline采用自定义json,添加json转为otio或FCPXML7
+（已实现了..吗？）当前timeline采用自定义json,添加json转为otio或FCPXML7（实际上因为otio压根没有对字幕的专属规定，我在导出到达芬奇和kdenlive的时候都遇到了字幕丢失问题，还有各种诡异的bug，在linux上用个剪辑软件真的是醉了）
 
 artlist寻找最符合描述风格的配乐
 
