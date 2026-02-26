@@ -59,7 +59,7 @@
       "properties": {
         "id": { "type": "string" },
         "name": { "type": "string" },
-        "type": { "type": "string", "enum": ["video", "audio", "subtitle"] },
+        "type": { "type": "string", "enum": ["video", "audio", "subtitle", "text"] },
         "locked": { "type": "boolean", "default": false },
         "muted": { "type": "boolean", "default": false },
         "clips": {
@@ -73,7 +73,7 @@
       "required": ["id", "type", "timeline_start_sec", "duration_sec"],
       "properties": {
         "id": { "type": "string" },
-        "type": { "type": "string", "enum": ["video", "audio", "subtitle"] },
+        "type": { "type": "string", "enum": ["video", "audio", "subtitle", "text"] },
         "media_id": {
           "type": "string",
           "description": "Reference to a MediaAsset.id in media_pool"
@@ -108,6 +108,13 @@
         },
         "subtitle_style": {
           "$ref": "#/$defs/SubtitleStyle"
+        },
+        "text_content": {
+          "type": "string",
+          "description": "Only for text clips - the text content to display"
+        },
+        "text_style": {
+          "$ref": "#/$defs/TextStyle"
         }
       }
     },
@@ -123,6 +130,36 @@
           "default": 0.85,
           "description": "0=top, 1=bottom, as fraction of frame height"
         }
+      }
+    },
+    "TextStyle": {
+      "type": "object",
+      "properties": {
+        "position_x": {
+          "type": "number",
+          "default": 0.5,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Horizontal center position as fraction of frame width (0=left, 1=right)"
+        },
+        "position_y": {
+          "type": "number",
+          "default": 0.5,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Vertical center position as fraction of frame height (0=top, 1=bottom)"
+        },
+        "font_family": { "type": "string", "default": "sans-serif" },
+        "font_size": { "type": "integer", "default": 48 },
+        "color": { "type": "string", "default": "#FFFFFF" },
+        "background": { "type": "string", "default": "transparent" },
+        "text_align": {
+          "type": "string",
+          "enum": ["left", "center", "right"],
+          "default": "center"
+        },
+        "bold": { "type": "boolean", "default": false },
+        "italic": { "type": "boolean", "default": false }
       }
     }
   }

@@ -11,6 +11,7 @@ from app.config import settings
 from app.models.timeline import TimelineProject
 from app.services.export_jobs import create_job, get_job
 from app.services.ffmpeg_export import run_export
+from app.services.remotion_export import run_remotion_export
 from app.services.otio_export import export_otio_file
 from app.services.fcpxml_export import export_fcpxml_file
 from app.services.srt_export import generate_srt_string
@@ -27,7 +28,7 @@ _MIME_TYPES: dict[str, str] = {
 
 class ExportRequest(BaseModel):
     project_id: str
-    format: str = "mp4"
+    format: str = "mp4"  # mp4 (Remotion), mp4_ffmpeg (FFmpeg fallback), otio, fcpxml
     include_srt: bool = True
 
 
@@ -94,11 +95,19 @@ async def start_export(req: ExportRequest):
             },
         )
 
-    # ── Async video export (existing MP4 flow) ────────────────
-    output_path = str(exports_dir / f"{export_id}.{req.format}")
+    # ── Async video export ────────────────────────────────────
+    use_ffmpeg = req.format == "mp4_ffmpeg"
+    output_path = str(exports_dir / f"{export_id}.mp4")
     job = create_job(export_id, req.project_id, output_path)
-    asyncio.create_task(run_export(export_id, req.project_id, timeline, output_path))
-    return {"export_id": export_id, "status": job.status}
+
+    if use_ffmpeg:
+        # FFmpeg fallback (faster but may differ from browser preview)
+        asyncio.create_task(run_export(export_id, req.project_id, timeline, output_path))
+    else:
+        # Remotion render (pixel-perfect match with browser preview)
+        asyncio.create_task(run_remotion_export(export_id, req.project_id, timeline, output_path))
+
+    return {"export_id": export_id, "status": job.status, "renderer": "ffmpeg" if use_ffmpeg else "remotion"}
 
 
 @router.get("/{export_id}/status")

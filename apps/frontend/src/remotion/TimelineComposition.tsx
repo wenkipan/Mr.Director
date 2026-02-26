@@ -4,7 +4,8 @@ import { resolveMediaUrl } from '../lib/timelineAdapter';
 import { parseSrt, type SrtEntry } from '../lib/srtParser';
 import { useEffect, useState } from 'react';
 
-/** Renders a single SRT-backed subtitle clip, fetching & parsing the .srt file. */
+/** Renders a single SRT-backed subtitle clip, fetching & parsing the .srt file.
+ *  In SSR mode, clip._srt_content is pre-populated by the backend so no fetch is needed. */
 const SrtSubtitleClip: React.FC<{
   clip: ClipType;
   timeline: TimelineProject;
@@ -13,9 +14,16 @@ const SrtSubtitleClip: React.FC<{
   const frame = useCurrentFrame(); // frame relative to this Sequence
   const [entries, setEntries] = useState<SrtEntry[]>([]);
 
+  // SSR mode: backend injects raw SRT content directly into the clip
+  const inlineSrt = (clip as any)._srt_content as string | undefined;
   const mediaUrl = clip.media_id ? resolveMediaUrl(clip.media_id, timeline) : '';
 
   useEffect(() => {
+    // If inline SRT content is available (SSR mode), parse it directly
+    if (inlineSrt) {
+      setEntries(parseSrt(inlineSrt));
+      return;
+    }
     if (!mediaUrl) return;
     fetch(mediaUrl)
       .then((r) => {
@@ -24,7 +32,7 @@ const SrtSubtitleClip: React.FC<{
       })
       .then((text) => setEntries(parseSrt(text)))
       .catch((err) => console.warn('SRT fetch error:', err));
-  }, [mediaUrl]);
+  }, [mediaUrl, inlineSrt]);
 
   // Current source time in the SRT file
   const sourceTime = (clip.source_in_sec ?? 0) + (frame / fps) * (clip.speed ?? 1);
@@ -71,6 +79,7 @@ export const TimelineComposition: React.FC<TimelineCompositionProps> = ({ timeli
   const videoTracks = timeline.tracks.filter((t) => t.type === 'video');
   const audioTracks = timeline.tracks.filter((t) => t.type === 'audio');
   const subtitleTracks = timeline.tracks.filter((t) => t.type === 'subtitle');
+  const textTracks = timeline.tracks.filter((t) => t.type === 'text');
 
   return (
     <AbsoluteFill style={{ backgroundColor: '#000' }}>
@@ -191,6 +200,61 @@ export const TimelineComposition: React.FC<TimelineCompositionProps> = ({ timeli
                       }}
                     >
                       {clip.subtitle_text}
+                    </div>
+                  </AbsoluteFill>
+                </Sequence>
+              );
+            }),
+      )}
+
+      {/* Text overlay tracks (on top of subtitles) */}
+      {textTracks.map((track) =>
+        track.muted
+          ? null
+          : track.clips.map((clip) => {
+              const startFrame = Math.round(clip.timeline_start_sec * fps);
+              const durationFrames = Math.round(clip.duration_sec * fps);
+
+              if (!clip.text_content) return null;
+              const style = clip.text_style;
+
+              return (
+                <Sequence
+                  key={clip.id}
+                  from={startFrame}
+                  durationInFrames={durationFrames}
+                >
+                  <AbsoluteFill
+                    style={{
+                      justifyContent: 'flex-start',
+                      alignItems: 'flex-start',
+                    }}
+                  >
+                    <div
+                      style={{
+                        position: 'absolute',
+                        left: `${((style?.position_x ?? 0.5) * 100).toFixed(1)}%`,
+                        top: `${((style?.position_y ?? 0.5) * 100).toFixed(1)}%`,
+                        transform: 'translate(-50%, -50%)',
+                        fontFamily: style?.font_family ?? 'sans-serif',
+                        fontSize: style?.font_size ?? 48,
+                        color: style?.color ?? '#FFFFFF',
+                        backgroundColor: style?.background ?? 'transparent',
+                        textAlign: style?.text_align ?? 'center',
+                        fontWeight: style?.bold ? 'bold' : 'normal',
+                        fontStyle: style?.italic ? 'italic' : 'normal',
+                        padding:
+                          style?.background && style.background !== 'transparent'
+                            ? '4px 16px'
+                            : undefined,
+                        borderRadius:
+                          style?.background && style.background !== 'transparent'
+                            ? 4
+                            : undefined,
+                        whiteSpace: 'pre-wrap',
+                      }}
+                    >
+                      {clip.text_content}
                     </div>
                   </AbsoluteFill>
                 </Sequence>

@@ -206,6 +206,57 @@ def _convert_subtitle_track(
     return otio_track
 
 
+def _convert_text_track(
+    track: Track, rate: float,
+) -> otio.schema.Track:
+    """Convert a text overlay track to an OTIO Video track with clips.
+
+    OTIO has no native text overlay TrackKind, so we use TrackKind.Video
+    with metadata marking it as a text track.
+    """
+    otio_track = otio.schema.Track(
+        name=track.name or track.id,
+        kind=otio.schema.TrackKind.Video,
+        metadata={"mrdv2": {"is_text_track": True}},
+    )
+
+    sorted_clips = sorted(track.clips, key=lambda c: c.timeline_start_sec)
+    current_time = 0.0
+
+    for clip in sorted_clips:
+        gap_duration = clip.timeline_start_sec - current_time
+        if gap_duration > 1e-4:
+            otio_track.append(_build_gap(gap_duration, rate))
+            current_time += gap_duration
+
+        source_range = _build_source_range(clip, rate)
+
+        style_meta = {}
+        if clip.text_style:
+            style_meta = clip.text_style.model_dump()
+
+        media_ref = otio.schema.GeneratorReference(
+            name="TextOverlayGenerator",
+            generator_kind="TextOverlay",
+            metadata={
+                "mrdv2_text_content": clip.text_content or "",
+                "mrdv2_text_style": style_meta,
+            },
+        )
+
+        otio_clip = otio.schema.Clip(
+            name=clip.text_content[:50] if clip.text_content else clip.id,
+            media_reference=media_ref,
+            source_range=source_range,
+            metadata={"mrdv2": {"is_text_clip": True}},
+        )
+
+        otio_track.append(otio_clip)
+        current_time = clip.timeline_start_sec + clip.duration_sec
+
+    return otio_track
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -229,6 +280,9 @@ def convert_to_otio(timeline: TimelineProject) -> otio.schema.Timeline:
             continue
         if track.type == "subtitle":
             otio_track = _convert_subtitle_track(track, timeline.media_pool, rate)
+            otio_timeline.tracks.append(otio_track)
+        elif track.type == "text":
+            otio_track = _convert_text_track(track, rate)
             otio_timeline.tracks.append(otio_track)
         elif track.type in ("video", "audio"):
             otio_track = _convert_track(track, timeline.media_pool, rate)

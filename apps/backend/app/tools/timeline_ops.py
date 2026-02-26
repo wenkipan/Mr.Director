@@ -29,7 +29,7 @@ def _gen_id(prefix: str = "clip") -> str:
             },
             "tracks": {
                 "type": "STRING",
-                "description": "JSON array of tracks: [{id, name, type, clips: [{id, type, media_id, source_in_sec, source_out_sec, timeline_start_sec, duration_sec, speed, subtitle_text}]}]",
+                "description": "JSON array of tracks: [{id, name, type, clips: [{id, type, media_id, source_in_sec, source_out_sec, timeline_start_sec, duration_sec, speed, subtitle_text, text_content, text_style}]}]",
             },
         },
         "required": ["name"],
@@ -90,7 +90,7 @@ async def create_timeline(args: dict, state) -> dict:
                 "description": "JSON object with operation-specific parameters. "
                 "add_track: {id, name, type}. "
                 "remove_track: {track_id}. "
-                "add_clip: {track_id, clip: {id, type, media_id, source_in_sec, source_out_sec, timeline_start_sec, duration_sec, speed, subtitle_text}}. "
+                "add_clip: {track_id, clip: {id, type, media_id, source_in_sec, source_out_sec, timeline_start_sec, duration_sec, speed, subtitle_text, text_content, text_style}}. "
                 "remove_clip: {track_id, clip_id}. "
                 "modify_clip: {track_id, clip_id, updates: {field: value, ...}}. "
                 "split_clip: {track_id, clip_id, split_at_sec (timeline time)}. "

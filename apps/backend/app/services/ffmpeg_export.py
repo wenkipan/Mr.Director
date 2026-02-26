@@ -1,6 +1,8 @@
 import asyncio
 import logging
 import re
+import shutil
+import subprocess
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -10,6 +12,10 @@ from app.services.export_jobs import update_job
 from app.services.ws_manager import ws_manager
 
 logger = logging.getLogger(__name__)
+
+# Cached CJK font path (resolved once on first use)
+_cjk_font_cache: str | None = None
+_cjk_font_searched: bool = False
 
 
 @dataclass
@@ -101,6 +107,70 @@ def _build_force_style(style) -> str:
     return ",".join(parts)
 
 
+def _css_color_to_ffmpeg(color: str) -> str:
+    """Convert CSS color string to FFmpeg-compatible color format.
+
+    rgba(0,0,0,0.5) → 0x000000@0.5
+    #RRGGBB          → 0xRRGGBB
+    named colors     → passed through (FFmpeg supports them)
+    """
+    if not color:
+        return ""
+    m = re.match(
+        r"rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+))?\s*\)",
+        color,
+    )
+    if m:
+        r, g, b = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        a = float(m.group(4)) if m.group(4) else 1.0
+        hex_color = f"0x{r:02x}{g:02x}{b:02x}"
+        if a < 1.0:
+            return f"{hex_color}@{a}"
+        return hex_color
+    # #RRGGBB → 0xRRGGBB (FFmpeg prefers 0x prefix)
+    if color.startswith("#") and len(color) == 7:
+        return "0x" + color[1:]
+    return color
+
+
+def _find_cjk_fontfile() -> str | None:
+    """Find a CJK-capable font file on the system (cached)."""
+    global _cjk_font_cache, _cjk_font_searched
+    if _cjk_font_searched:
+        return _cjk_font_cache
+    _cjk_font_searched = True
+
+    if shutil.which("fc-list"):
+        try:
+            result = subprocess.run(
+                ["fc-list", ":lang=zh", "file"],
+                capture_output=True, text=True, timeout=5,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                first_line = result.stdout.strip().split("\n")[0]
+                font_path = first_line.split(":")[0].strip()
+                if Path(font_path).exists():
+                    _cjk_font_cache = font_path
+                    logger.info("Found CJK font: %s", font_path)
+                    return _cjk_font_cache
+        except Exception:
+            pass
+
+    # Fallback: check common paths
+    for candidate in [
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+    ]:
+        if Path(candidate).exists():
+            _cjk_font_cache = candidate
+            logger.info("Found CJK font (fallback): %s", candidate)
+            return _cjk_font_cache
+
+    logger.warning("No CJK font found — text overlays with CJK characters may not render")
+    return None
+
+
 def build_ffmpeg_command(timeline: TimelineProject, output_path: str) -> tuple[list[str], list[str]]:
     """Translate Timeline JSON into an ffmpeg command."""
     width = timeline.project.width
@@ -115,6 +185,7 @@ def build_ffmpeg_command(timeline: TimelineProject, output_path: str) -> tuple[l
     video_clips: list[tuple[Track, Clip]] = []
     audio_clips: list[tuple[Track, Clip]] = []
     subtitle_clips: list[tuple[Track, Clip]] = []
+    text_clips: list[tuple[Track, Clip]] = []
 
     for track in timeline.tracks:
         if track.muted:
@@ -126,6 +197,8 @@ def build_ffmpeg_command(timeline: TimelineProject, output_path: str) -> tuple[l
                 audio_clips.append((track, clip))
             elif track.type == "subtitle":
                 subtitle_clips.append((track, clip))
+            elif track.type == "text":
+                text_clips.append((track, clip))
 
     # Build command
     inputs: list[str] = []
@@ -360,6 +433,63 @@ def build_ffmpeg_command(timeline: TimelineProject, output_path: str) -> tuple[l
             final_video_label = "vout"
     else:
         final_video_label = "vout"
+
+    # --- Text overlay burn-in (drawtext filters) ---
+    if text_clips:
+        cjk_font = _find_cjk_fontfile()
+        current_label = final_video_label
+        dt_idx = 0
+        for _track, clip in text_clips:
+            if not clip.text_content:
+                continue
+            style = clip.text_style
+            start = clip.timeline_start_sec
+            end = start + clip.duration_sec
+
+            # Escape text for FFmpeg drawtext: backslash, colon, single-quote
+            escaped_text = (
+                clip.text_content
+                .replace("\\", "\\\\")
+                .replace("'", "'\\''")
+                .replace(":", "\\:")
+                .replace("%", "%%")
+            )
+
+            pos_x = style.position_x if style else 0.5
+            pos_y = style.position_y if style else 0.5
+            font_size = style.font_size if style else 48
+            font_color = _css_color_to_ffmpeg(style.color) if style else "0xFFFFFF"
+            bg_color = _css_color_to_ffmpeg(style.background) if style else ""
+
+            # Build drawtext filter
+            dt_parts = [
+                f"text='{escaped_text}'",
+                f"fontsize={font_size}",
+                f"fontcolor={font_color}",
+                # Center text on the anchor point: x = w*pos_x - tw/2, y = h*pos_y - th/2
+                f"x=w*{pos_x}-tw/2",
+                f"y=h*{pos_y}-th/2",
+                f"enable='between(t,{start},{end})'",
+            ]
+
+            # Font: prefer CJK fontfile for proper Unicode rendering
+            if cjk_font:
+                escaped_font = cjk_font.replace("\\", "\\\\").replace(":", "\\:").replace("'", "'\\''")
+                dt_parts.append(f"fontfile='{escaped_font}'")
+
+            if bg_color and bg_color != "transparent":
+                dt_parts.append("box=1")
+                dt_parts.append(f"boxcolor={bg_color}")
+                dt_parts.append("boxborderw=8")
+
+            next_label = f"vtxt{dt_idx}"
+            filter_parts.append(
+                f"[{current_label}]drawtext={':'.join(dt_parts)}[{next_label}]"
+            )
+            current_label = next_label
+            dt_idx += 1
+
+        final_video_label = current_label
 
     # Assemble full command
     filter_complex = ";\n".join(filter_parts)

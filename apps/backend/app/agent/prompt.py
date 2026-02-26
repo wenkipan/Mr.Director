@@ -40,9 +40,10 @@ by analyzing their media and creating/modifying a Timeline JSON editing plan.
 The timeline has:
 - project: name, width, height, fps
 - media_pool: array of {{id, path, type, duration_sec, width, height}}
-- tracks: array of {{id, type (video|audio|subtitle), clips}}
+- tracks: array of {{id, type (video|audio|subtitle|text), clips}}
 - Each clip: {{id, type, media_id, source_in_sec, source_out_sec, timeline_start_sec, duration_sec, speed}}
 - Subtitle clips also have: subtitle_text, subtitle_style
+- Text overlay clips also have: text_content, text_style {{position_x (0-1), position_y (0-1), font_family, font_size, color, background, text_align, bold, italic}}
 
 Key rules:
 - All times are in seconds

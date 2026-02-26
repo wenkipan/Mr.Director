@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { TRACK_COLORS } from './timelineConstants';
 
-type TrackType = 'video' | 'audio' | 'subtitle';
+type TrackType = 'video' | 'audio' | 'subtitle' | 'text';
 
 interface AddTrackButtonProps {
   onAddTrack: (type: TrackType) => void;
@@ -11,6 +11,7 @@ const options: { type: TrackType; label: string }[] = [
   { type: 'video', label: 'Video Track' },
   { type: 'audio', label: 'Audio Track' },
   { type: 'subtitle', label: 'Subtitle Track' },
+  { type: 'text', label: 'Text Track' },
 ];
 
 export default function AddTrackButton({ onAddTrack }: AddTrackButtonProps) {

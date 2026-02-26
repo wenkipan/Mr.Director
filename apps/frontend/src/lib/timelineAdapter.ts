@@ -4,12 +4,18 @@ const API_BASE = '/api';
 
 /**
  * Resolve a clip's media_id to a full API URL using the media_pool.
+ * In SSR mode (Remotion render), the backend rewrites paths to full HTTP URLs
+ * pointing to the backend's media endpoint, so we return them directly.
  */
 export function resolveMediaUrl(mediaId: string, timeline: TimelineProject): string {
   const asset = timeline.media_pool?.find((m) => m.id === mediaId);
   if (!asset) {
     console.warn(`Media asset not found: ${mediaId}`);
     return '';
+  }
+  // SSR mode: paths are already full HTTP URLs set by the backend
+  if ((timeline as any)._ssr) {
+    return asset.path;
   }
   return `${API_BASE}/media/file?path=${encodeURIComponent(asset.path)}`;
 }

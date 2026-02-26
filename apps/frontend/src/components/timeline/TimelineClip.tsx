@@ -89,7 +89,9 @@ export default function TimelineClip({
   const label =
     clip.type === 'subtitle'
       ? clip.subtitle_text?.slice(0, 20) || 'Sub'
-      : mediaName || clip.media_id || clip.id;
+      : clip.type === 'text'
+        ? clip.text_content?.slice(0, 20) || 'Text'
+        : mediaName || clip.media_id || clip.id;
 
   return (
     <div

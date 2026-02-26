@@ -10,12 +10,14 @@
   },
   "dependencies": {
     "@mrdv2/shared": "workspace:*",
-    "@remotion/player": "^4.0.0",
+    "@remotion/bundler": "^4.0.429",
+    "@remotion/cli": "^4.0.429",
+    "@remotion/player": "^4.0.429",
     "@xzdarcy/react-timeline-editor": "^1.0.0",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
     "react-resizable-panels": "^2.1.0",
-    "remotion": "^4.0.0",
+    "remotion": "^4.0.429",
     "zustand": "^5.0.0"
   },
   "devDependencies": {
