@@ -36,6 +36,20 @@ export interface TextStyle {
   italic?: boolean;
 }
 
+export interface VideoStyle {
+  position_x?: number;
+  position_y?: number;
+  width?: number;
+  height?: number;
+  opacity?: number;
+  fit?: 'contain' | 'cover' | 'fill';
+  crop_left?: number;
+  crop_top?: number;
+  crop_right?: number;
+  crop_bottom?: number;
+  border_radius?: number;
+}
+
 export interface Clip {
   id: string;
   type: 'video' | 'audio' | 'subtitle' | 'text';
@@ -49,6 +63,7 @@ export interface Clip {
   subtitle_style?: SubtitleStyle;
   text_content?: string;
   text_style?: TextStyle;
+  video_style?: VideoStyle;
 }
 
 export interface Track {

@@ -223,3 +223,50 @@ export function addClipToTimeline(
 
   return newTimeline;
 }
+
+/** Split a clip at a given timeline time, producing two clips */
+export function splitClipInTimeline(
+  timeline: TimelineProject,
+  clipId: string,
+  splitAtSec: number,
+): TimelineProject | null {
+  const found = findClipById(timeline, clipId);
+  if (!found) return null;
+
+  const { clip, trackIndex } = found;
+  const clipEnd = clip.timeline_start_sec + clip.duration_sec;
+
+  // splitAtSec must be strictly inside the clip
+  if (splitAtSec <= clip.timeline_start_sec || splitAtSec >= clipEnd) return null;
+
+  const offsetInClip = splitAtSec - clip.timeline_start_sec;
+  const speed = clip.speed ?? 1;
+  const sourceSplit = (clip.source_in_sec ?? 0) + offsetInClip * speed;
+
+  const clip1: Clip = {
+    ...clip,
+    id: generateClipId(),
+    duration_sec: offsetInClip,
+    source_out_sec: sourceSplit,
+  };
+
+  const clip2: Clip = {
+    ...clip,
+    id: generateClipId(),
+    timeline_start_sec: splitAtSec,
+    duration_sec: clip.duration_sec - offsetInClip,
+    source_in_sec: sourceSplit,
+  };
+
+  return {
+    ...timeline,
+    tracks: timeline.tracks.map((track, idx) =>
+      idx === trackIndex
+        ? {
+            ...track,
+            clips: track.clips.flatMap((c) => (c.id === clipId ? [clip1, clip2] : [c])),
+          }
+        : track,
+    ),
+  };
+}

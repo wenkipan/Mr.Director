@@ -28,7 +28,7 @@ Thumbs.db
 
 # Projects data
 apps/backend/projects/
-
+apps/frontend/projects/
 # Remotion
 out/
 a.md

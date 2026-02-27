@@ -1,5 +1,5 @@
 import { AbsoluteFill, Sequence, Video, Audio, useVideoConfig, useCurrentFrame } from 'remotion';
-import type { TimelineProject, Clip as ClipType } from '@mrdv2/shared';
+import type { TimelineProject, Clip as ClipType, VideoStyle } from '@mrdv2/shared';
 import { resolveMediaUrl } from '../lib/timelineAdapter';
 import { parseSrt, type SrtEntry } from '../lib/srtParser';
 import { useEffect, useState } from 'react';
@@ -69,6 +69,80 @@ const SrtSubtitleClip: React.FC<{
   );
 };
 
+/** Renders a single video clip with spatial positioning, crop, and opacity. */
+const VideoClipRenderer: React.FC<{
+  clip: ClipType;
+  mediaUrl: string;
+  fps: number;
+}> = ({ clip, mediaUrl, fps }) => {
+  const vs = clip.video_style;
+  const posX = vs?.position_x ?? 0.5;
+  const posY = vs?.position_y ?? 0.5;
+  const sizeW = vs?.width ?? 1.0;
+  const sizeH = vs?.height ?? 1.0;
+  const opacity = vs?.opacity ?? 1.0;
+  const fit = vs?.fit ?? 'contain';
+  const cropL = vs?.crop_left ?? 0;
+  const cropT = vs?.crop_top ?? 0;
+  const cropR = vs?.crop_right ?? 0;
+  const cropB = vs?.crop_bottom ?? 0;
+  const borderRadius = vs?.border_radius ?? 0;
+
+  const hasCrop = cropL > 0 || cropT > 0 || cropR > 0 || cropB > 0;
+  const isDefault =
+    !vs ||
+    (posX === 0.5 &&
+      posY === 0.5 &&
+      sizeW === 1.0 &&
+      sizeH === 1.0 &&
+      opacity === 1.0 &&
+      !hasCrop &&
+      borderRadius === 0);
+
+  // Visible fraction of source after crop
+  const visibleW = Math.max(1 - cropL - cropR, 0.1);
+  const visibleH = Math.max(1 - cropT - cropB, 0.1);
+
+  const containerStyle: React.CSSProperties = isDefault
+    ? { width: '100%', height: '100%' }
+    : {
+        position: 'absolute',
+        left: `${((posX - sizeW / 2) * 100).toFixed(2)}%`,
+        top: `${((posY - sizeH / 2) * 100).toFixed(2)}%`,
+        width: `${(sizeW * 100).toFixed(2)}%`,
+        height: `${(sizeH * 100).toFixed(2)}%`,
+        opacity,
+        overflow: 'hidden',
+        borderRadius: borderRadius > 0 ? borderRadius : undefined,
+      };
+
+  const videoStyle: React.CSSProperties = hasCrop
+    ? {
+        width: `${(100 / visibleW).toFixed(2)}%`,
+        height: `${(100 / visibleH).toFixed(2)}%`,
+        marginLeft: `${((-cropL / visibleW) * 100).toFixed(2)}%`,
+        marginTop: `${((-cropT / visibleH) * 100).toFixed(2)}%`,
+        objectFit: fit as React.CSSProperties['objectFit'],
+      }
+    : {
+        width: '100%',
+        height: '100%',
+        objectFit: fit as React.CSSProperties['objectFit'],
+      };
+
+  return (
+    <div style={containerStyle}>
+      <Video
+        src={mediaUrl}
+        startFrom={Math.round((clip.source_in_sec ?? 0) * fps)}
+        playbackRate={clip.speed ?? 1}
+        volume={0}
+        style={videoStyle}
+      />
+    </div>
+  );
+};
+
 interface TimelineCompositionProps {
   timeline: TimelineProject;
 }
@@ -83,7 +157,7 @@ export const TimelineComposition: React.FC<TimelineCompositionProps> = ({ timeli
 
   return (
     <AbsoluteFill style={{ backgroundColor: '#000' }}>
-      {/* Video tracks (bottom-up stacking) */}
+      {/* Video tracks (bottom-up stacking: later tracks render on top) */}
       {videoTracks.map((track) =>
         track.muted
           ? null
@@ -103,17 +177,7 @@ export const TimelineComposition: React.FC<TimelineCompositionProps> = ({ timeli
                   durationInFrames={durationFrames}
                 >
                   <AbsoluteFill>
-                    <Video
-                      src={mediaUrl}
-                      startFrom={Math.round((clip.source_in_sec ?? 0) * fps)}
-                      playbackRate={clip.speed ?? 1}
-                      volume={0}
-                      style={{
-                        width: '100%',
-                        height: '100%',
-                        objectFit: 'contain',
-                      }}
-                    />
+                    <VideoClipRenderer clip={clip} mediaUrl={mediaUrl} fps={fps} />
                   </AbsoluteFill>
                 </Sequence>
               );

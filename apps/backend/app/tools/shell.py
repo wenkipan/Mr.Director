@@ -7,13 +7,13 @@ import shlex
 
 from app.tools.registry import registry
 
-ALLOWED_COMMANDS = {"ffprobe", "ffmpeg", "ls", "cat", "head", "wc", "file", "du", "mediainfo"}
+ALLOWED_COMMANDS = {"ffprobe", "ls", "cat", "head", "wc", "file", "du", "mediainfo"}
 
 
 @registry.register(
     name="run_shell",
     description="Run a shell command. Primarily used for ffprobe to get media file info. "
-    "Allowed commands: ffprobe, ffmpeg, ls, cat, head, wc, file, du, mediainfo.",
+    "Allowed commands: ffprobe, ls, cat, head, wc, file, du, mediainfo.",
     parameters={
         "type": "OBJECT",
         "properties": {

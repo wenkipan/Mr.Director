@@ -15,6 +15,7 @@ interface TimelineCanvasProps {
   snapGuideTime: number | null;
   canvasWidth: number;
   height: number;
+  scrollTop: number;
 }
 
 export default function TimelineCanvas({
@@ -25,6 +26,7 @@ export default function TimelineCanvas({
   snapGuideTime,
   canvasWidth,
   height,
+  scrollTop,
 }: TimelineCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -77,9 +79,15 @@ export default function TimelineCanvas({
       ctx.stroke();
     }
 
-    // Track headers and lane backgrounds
+    // Clip region for track area (below ruler) to prevent tracks from drawing over ruler
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, RULER_HEIGHT, canvasWidth, height - RULER_HEIGHT);
+    ctx.clip();
+
+    // Track headers and lane backgrounds (offset by scrollTop)
     timeline.tracks.forEach((track, i) => {
-      const y = RULER_HEIGHT + i * TRACK_HEIGHT;
+      const y = RULER_HEIGHT + i * TRACK_HEIGHT - scrollTop;
 
       // Header background
       ctx.fillStyle = '#27272a';
@@ -99,23 +107,27 @@ export default function TimelineCanvas({
       ctx.lineWidth = 1;
       ctx.setLineDash([4, 4]);
       ctx.beginPath();
-      ctx.moveTo(snapX, 0);
+      ctx.moveTo(snapX, RULER_HEIGHT);
       ctx.lineTo(snapX, height);
       ctx.stroke();
       ctx.setLineDash([]);
     }
 
-    // Playhead
+    // Playhead line in track area
     const playheadX = HEADER_WIDTH + currentTime * pixelsPerSec;
     if (playheadX >= HEADER_WIDTH) {
       ctx.strokeStyle = '#ef4444';
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(playheadX, 0);
+      ctx.moveTo(playheadX, RULER_HEIGHT);
       ctx.lineTo(playheadX, height);
       ctx.stroke();
+    }
 
-      // Playhead triangle
+    ctx.restore();
+
+    // Playhead triangle on ruler (outside clip region so always visible)
+    if (playheadX >= HEADER_WIDTH) {
       ctx.fillStyle = '#ef4444';
       ctx.beginPath();
       ctx.moveTo(playheadX - 6, 0);
@@ -123,8 +135,16 @@ export default function TimelineCanvas({
       ctx.lineTo(playheadX, 8);
       ctx.closePath();
       ctx.fill();
+
+      // Playhead line through ruler
+      ctx.strokeStyle = '#ef4444';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(playheadX, 0);
+      ctx.lineTo(playheadX, RULER_HEIGHT);
+      ctx.stroke();
     }
-  }, [timeline, currentTime, totalDuration, pixelsPerSec, snapGuideTime, canvasWidth, height]);
+  }, [timeline, currentTime, totalDuration, pixelsPerSec, snapGuideTime, canvasWidth, height, scrollTop]);
 
   return (
     <canvas

@@ -44,6 +44,10 @@ The timeline has:
 - Each clip: {{id, type, media_id, source_in_sec, source_out_sec, timeline_start_sec, duration_sec, speed}}
 - Subtitle clips also have: subtitle_text, subtitle_style
 - Text overlay clips also have: text_content, text_style {{position_x (0-1), position_y (0-1), font_family, font_size, color, background, text_align, bold, italic}}
+- Video/image clips can have: video_style {{position_x (0-1, center X), position_y (0-1, center Y), width (0-1, fraction of frame), height (0-1, fraction of frame), opacity (0-1), fit (contain|cover|fill), crop_left/crop_top/crop_right/crop_bottom (0-0.9, fraction to crop from each edge), border_radius (px)}}
+- Picture-in-Picture: place main video on the first video track (full frame, no video_style needed), then add PiP video on a second video track with video_style (e.g., position_x=0.8, position_y=0.2, width=0.3, height=0.3 for top-right corner)
+- Track order determines layering: later tracks in the array render on top of earlier tracks
+- To crop a 16:9 video to center 1:1: set crop_left=0.21875, crop_right=0.21875
 
 Key rules:
 - All times are in seconds

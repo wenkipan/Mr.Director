@@ -22,6 +22,8 @@ interface TimelineClipLayerProps {
   timeline: TimelineProject;
   pixelsPerSec: number;
   selectedClipIds: Set<string>;
+  scrollTop: number;
+  contentWidth: number;
   dragState: DragState | null;
   onClipSelect: (clipId: string, multi: boolean) => void;
   onClipDragStart: (clipId: string, type: DragType, pointerX: number) => void;
@@ -32,6 +34,8 @@ export default function TimelineClipLayer({
   timeline,
   pixelsPerSec,
   selectedClipIds,
+  scrollTop,
+  contentWidth,
   dragState,
   onClipSelect,
   onClipDragStart,
@@ -48,7 +52,8 @@ export default function TimelineClipLayer({
 
   return (
     <div
-      className="absolute top-0 left-0 w-full h-full"
+      className="absolute top-0 left-0 h-full"
+      style={{ width: contentWidth, clipPath: `inset(${RULER_HEIGHT}px 0 0 0)` }}
       onPointerDown={(e) => {
         // Click on background (not on a clip) → clear selection
         if (e.target === e.currentTarget) {
@@ -59,7 +64,7 @@ export default function TimelineClipLayer({
       {timeline.tracks.map((track, trackIndex) =>
         track.clips.map((clip) => {
           const left = HEADER_WIDTH + clip.timeline_start_sec * pixelsPerSec;
-          const top = RULER_HEIGHT + trackIndex * TRACK_HEIGHT + CLIP_PADDING;
+          const top = RULER_HEIGHT + trackIndex * TRACK_HEIGHT + CLIP_PADDING - scrollTop;
           const width = clip.duration_sec * pixelsPerSec;
           const isDragging = dragState?.clipId === clip.id;
 

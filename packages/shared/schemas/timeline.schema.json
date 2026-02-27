@@ -115,6 +115,9 @@
         },
         "text_style": {
           "$ref": "#/$defs/TextStyle"
+        },
+        "video_style": {
+          "$ref": "#/$defs/VideoStyle"
         }
       }
     },
@@ -129,6 +132,87 @@
           "type": "number",
           "default": 0.85,
           "description": "0=top, 1=bottom, as fraction of frame height"
+        }
+      }
+    },
+    "VideoStyle": {
+      "type": "object",
+      "description": "Spatial and visual properties for video/image clips (PiP, overlay, crop)",
+      "properties": {
+        "position_x": {
+          "type": "number",
+          "default": 0.5,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Horizontal center position as fraction of frame width (0=left, 0.5=center, 1=right)"
+        },
+        "position_y": {
+          "type": "number",
+          "default": 0.5,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Vertical center position as fraction of frame height (0=top, 0.5=center, 1=bottom)"
+        },
+        "width": {
+          "type": "number",
+          "default": 1.0,
+          "minimum": 0.01,
+          "maximum": 2.0,
+          "description": "Width as fraction of frame width (1.0 = full width, 0.5 = half)"
+        },
+        "height": {
+          "type": "number",
+          "default": 1.0,
+          "minimum": 0.01,
+          "maximum": 2.0,
+          "description": "Height as fraction of frame height (1.0 = full height, 0.5 = half)"
+        },
+        "opacity": {
+          "type": "number",
+          "default": 1.0,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Opacity (0=transparent, 1=fully opaque)"
+        },
+        "fit": {
+          "type": "string",
+          "enum": ["contain", "cover", "fill"],
+          "default": "contain",
+          "description": "How video fits its bounding box. contain=letterbox, cover=crop to fill, fill=stretch"
+        },
+        "crop_left": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 0.9,
+          "description": "Fraction to crop from left edge of source video"
+        },
+        "crop_top": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 0.9,
+          "description": "Fraction to crop from top edge of source video"
+        },
+        "crop_right": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 0.9,
+          "description": "Fraction to crop from right edge of source video"
+        },
+        "crop_bottom": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 0.9,
+          "description": "Fraction to crop from bottom edge of source video"
+        },
+        "border_radius": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "description": "Border radius in pixels (0 = sharp corners)"
         }
       }
     },

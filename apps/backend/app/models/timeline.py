@@ -21,6 +21,20 @@ class TextStyle(BaseModel):
     italic: bool = False
 
 
+class VideoStyle(BaseModel):
+    position_x: float = 0.5
+    position_y: float = 0.5
+    width: float = 1.0
+    height: float = 1.0
+    opacity: float = 1.0
+    fit: str = "contain"  # "contain" | "cover" | "fill"
+    crop_left: float = 0
+    crop_top: float = 0
+    crop_right: float = 0
+    crop_bottom: float = 0
+    border_radius: float = 0
+
+
 class Clip(BaseModel):
     id: str
     type: str  # "video" | "audio" | "subtitle" | "text"
@@ -34,6 +48,7 @@ class Clip(BaseModel):
     subtitle_style: SubtitleStyle | None = None
     text_content: str | None = None
     text_style: TextStyle | None = None
+    video_style: VideoStyle | None = None
 
 
 class Track(BaseModel):

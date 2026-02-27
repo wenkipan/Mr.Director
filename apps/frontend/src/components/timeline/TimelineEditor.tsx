@@ -3,12 +3,12 @@ import type { TimelineProject } from '@mrdv2/shared';
 import TimelineCanvas from './TimelineCanvas';
 import TimelineClipLayer from './TimelineClipLayer';
 import TimelineTrackHeaders from './TimelineTrackHeaders';
-import { useTimelineSelection } from './useTimelineSelection';
 import { useTimelineDrag } from './useTimelineDrag';
 import {
   HEADER_WIDTH,
   RULER_HEIGHT,
   TRACK_HEIGHT,
+  ADD_TRACK_ROW_HEIGHT,
   DEFAULT_PIXELS_PER_SEC,
   MIN_PIXELS_PER_SEC,
   MAX_PIXELS_PER_SEC,
@@ -17,6 +17,7 @@ import {
 import {
   calcTotalDuration,
   removeClipsFromTimeline,
+  splitClipInTimeline,
   generateClipId,
   generateMediaId,
   addClipToTimeline,
@@ -29,6 +30,9 @@ interface TimelineEditorProps {
   currentTime: number; // seconds
   onSeek: (timeSec: number) => void;
   onTimelineChange: (newTimeline: TimelineProject) => void;
+  selectedClipIds: Set<string>;
+  onSelectClip: (clipId: string, multi: boolean) => void;
+  onClearSelection: () => void;
 }
 
 export default function TimelineEditor({
@@ -36,20 +40,25 @@ export default function TimelineEditor({
   currentTime,
   onSeek,
   onTimelineChange,
+  selectedClipIds,
+  onSelectClip,
+  onClearSelection,
 }: TimelineEditorProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerHeight, setContainerHeight] = useState(250);
   const [snapGuideTime, setSnapGuideTime] = useState<number | null>(null);
   const [scrollLeft, setScrollLeft] = useState(0);
+  const [scrollTop, setScrollTop] = useState(0);
   const [dropTarget, setDropTarget] = useState<{ trackIndex: number; timeSec: number } | null>(null);
   const dragEnterCountRef = useRef(0);
 
   const [pixelsPerSec, setPixelsPerSec] = useState(DEFAULT_PIXELS_PER_SEC);
   const totalDuration = useMemo(() => calcTotalDuration(timeline), [timeline]);
 
-  // Selection
-  const { selectedClipIds, selectClip, clearSelection } = useTimelineSelection();
+  // Selection (lifted to parent)
+  const selectClip = onSelectClip;
+  const clearSelection = onClearSelection;
 
   // Drag (snap is computed internally, excluding the dragged clip)
   const { dragVisualState, startDrag } = useTimelineDrag(
@@ -79,9 +88,11 @@ export default function TimelineEditor({
     return () => ro.disconnect();
   }, []);
 
-  // Wheel: Ctrl+wheel = zoom (anchored to cursor), plain wheel = horizontal scroll
+  // Wheel: Ctrl+wheel = zoom, track headers area = vertical scroll, else = horizontal scroll
   const pixelsPerSecRef = useRef(pixelsPerSec);
   pixelsPerSecRef.current = pixelsPerSec;
+  const scrollTopRef = useRef(scrollTop);
+  scrollTopRef.current = scrollTop;
 
   useEffect(() => {
     const scrollEl = scrollRef.current;
@@ -105,12 +116,26 @@ export default function TimelineEditor({
         // Adjust scroll so the same time stays under cursor
         scrollEl.scrollLeft = timeSec * newPPS - cursorX + HEADER_WIDTH;
       } else {
-        scrollEl.scrollLeft += e.deltaY;
+        // Check if cursor is over the track headers area
+        const rect = scrollEl.getBoundingClientRect();
+        const cursorXInContent = e.clientX - rect.left + scrollEl.scrollLeft;
+
+        if (cursorXInContent < HEADER_WIDTH) {
+          // Vertical scroll for track headers
+          const trackCount = timeline.tracks.length;
+          const totalTrackHeight = RULER_HEIGHT + trackCount * TRACK_HEIGHT + ADD_TRACK_ROW_HEIGHT;
+          const viewportHeight = scrollEl.clientHeight;
+          const maxScroll = Math.max(0, totalTrackHeight - viewportHeight);
+          const newScrollTop = Math.min(maxScroll, Math.max(0, scrollTopRef.current + e.deltaY));
+          setScrollTop(newScrollTop);
+        } else {
+          scrollEl.scrollLeft += e.deltaY;
+        }
       }
     };
     scrollEl.addEventListener('wheel', onWheel, { passive: false });
     return () => scrollEl.removeEventListener('wheel', onWheel);
-  }, []);
+  }, [timeline.tracks.length]);
 
   // Track scroll position for sticky track headers
   useEffect(() => {
@@ -158,13 +183,13 @@ export default function TimelineEditor({
       if (!scrollEl) return null;
       const rect = scrollEl.getBoundingClientRect();
       const x = e.clientX - rect.left + scrollEl.scrollLeft - HEADER_WIDTH;
-      const y = e.clientY - rect.top - RULER_HEIGHT;
+      const y = e.clientY - rect.top - RULER_HEIGHT + scrollTop;
       const trackIndex = Math.floor(y / TRACK_HEIGHT);
       const timeSec = Math.max(0, x / pixelsPerSec);
       if (trackIndex < 0 || trackIndex >= timeline.tracks.length) return null;
       return { trackIndex, timeSec };
     },
-    [pixelsPerSec, timeline.tracks.length],
+    [pixelsPerSec, timeline.tracks.length, scrollTop],
   );
 
   const handleDragOver = useCallback(
@@ -293,6 +318,17 @@ export default function TimelineEditor({
       if (e.key === 'Escape') {
         clearSelection();
       }
+
+      // S key: split selected clip at playhead
+      if (e.key === 's' && !isModKey && selectedClipIds.size === 1) {
+        e.preventDefault();
+        const clipId = [...selectedClipIds][0];
+        const result = splitClipInTimeline(timeline, clipId, currentTime);
+        if (result) {
+          onTimelineChange(result);
+          clearSelection();
+        }
+      }
     };
 
     el.addEventListener('keydown', handleKeyDown);
@@ -323,18 +359,22 @@ export default function TimelineEditor({
           snapGuideTime={snapGuideTime}
           canvasWidth={canvasWidth}
           height={containerHeight}
+          scrollTop={scrollTop}
         />
 
         <TimelineTrackHeaders
           timeline={timeline}
           onTimelineChange={onTimelineChange}
           scrollLeft={scrollLeft}
+          scrollTop={scrollTop}
         />
 
         <TimelineClipLayer
           timeline={timeline}
           pixelsPerSec={pixelsPerSec}
           selectedClipIds={selectedClipIds}
+          scrollTop={scrollTop}
+          contentWidth={canvasWidth}
           dragState={
             dragVisualState
               ? {
@@ -359,12 +399,13 @@ export default function TimelineEditor({
               className="absolute pointer-events-none"
               style={{
                 left: HEADER_WIDTH,
-                top: RULER_HEIGHT + dropTarget.trackIndex * TRACK_HEIGHT,
+                top: RULER_HEIGHT + dropTarget.trackIndex * TRACK_HEIGHT - scrollTop,
                 right: 0,
                 height: TRACK_HEIGHT,
                 backgroundColor: 'rgba(59, 130, 246, 0.15)',
                 borderTop: '1px solid rgba(59, 130, 246, 0.4)',
                 borderBottom: '1px solid rgba(59, 130, 246, 0.4)',
+                clipPath: `inset(${RULER_HEIGHT}px 0 0 0)`,
                 zIndex: 25,
               }}
             />
@@ -373,10 +414,11 @@ export default function TimelineEditor({
               className="absolute pointer-events-none"
               style={{
                 left: HEADER_WIDTH + dropTarget.timeSec * pixelsPerSec,
-                top: RULER_HEIGHT,
+                top: RULER_HEIGHT - scrollTop,
                 width: 0,
                 height: timeline.tracks.length * TRACK_HEIGHT,
                 borderLeft: '2px dashed rgba(59, 130, 246, 0.7)',
+                clipPath: `inset(${RULER_HEIGHT}px 0 0 0)`,
                 zIndex: 25,
               }}
             />

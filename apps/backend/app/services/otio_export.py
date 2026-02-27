@@ -123,6 +123,11 @@ def _convert_track(
             source_range=source_range,
         )
 
+        # Video spatial properties (PiP, overlay, crop)
+        if clip.video_style:
+            otio_clip.metadata.setdefault("mrdv2", {})
+            otio_clip.metadata["mrdv2"]["video_style"] = clip.video_style.model_dump()
+
         # Speed effect
         if abs(clip.speed - 1.0) > 1e-6:
             otio_clip.effects.append(

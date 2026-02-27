@@ -20,6 +20,7 @@ interface TimelineTrackHeadersProps {
   timeline: TimelineProject;
   onTimelineChange: (newTimeline: TimelineProject) => void;
   scrollLeft: number;
+  scrollTop: number;
 }
 
 interface DragState {
@@ -32,6 +33,7 @@ export default function TimelineTrackHeaders({
   timeline,
   onTimelineChange,
   scrollLeft,
+  scrollTop,
 }: TimelineTrackHeadersProps) {
   const [dragState, setDragState] = useState<DragState | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -47,7 +49,7 @@ export default function TimelineTrackHeaders({
       const container = containerRef.current;
       if (!container) return fromIndex;
       const rect = container.getBoundingClientRect();
-      const relativeY = currentY - rect.top - RULER_HEIGHT;
+      const relativeY = currentY - rect.top - RULER_HEIGHT + scrollTop;
       const rawIndex = Math.round(relativeY / TRACK_HEIGHT);
       return clamp(rawIndex, 0, timelineRef.current.tracks.length - 1);
     },
@@ -148,6 +150,7 @@ export default function TimelineTrackHeaders({
         width: HEADER_WIDTH,
         height: '100%',
         transform: `translateX(${scrollLeft}px)`,
+        clipPath: `inset(${RULER_HEIGHT}px 0 0 0)`,
         zIndex: 20,
       }}
     >
@@ -157,7 +160,7 @@ export default function TimelineTrackHeaders({
           key={track.id}
           className="absolute left-0"
           style={{
-            top: RULER_HEIGHT + index * TRACK_HEIGHT,
+            top: RULER_HEIGHT + index * TRACK_HEIGHT - scrollTop,
             width: HEADER_WIDTH,
             height: TRACK_HEIGHT,
             opacity: dragState?.fromIndex === index ? 0.3 : 1,
@@ -181,6 +184,7 @@ export default function TimelineTrackHeaders({
               RULER_HEIGHT +
               (dropIndex > dragState.fromIndex ? dropIndex + 1 : dropIndex) *
                 TRACK_HEIGHT -
+              scrollTop -
               1,
             height: 2,
             backgroundColor: '#3b82f6',
@@ -220,7 +224,7 @@ export default function TimelineTrackHeaders({
       <div
         className="absolute left-0"
         style={{
-          top: RULER_HEIGHT + timeline.tracks.length * TRACK_HEIGHT,
+          top: RULER_HEIGHT + timeline.tracks.length * TRACK_HEIGHT - scrollTop,
           width: HEADER_WIDTH,
           height: ADD_TRACK_ROW_HEIGHT,
         }}

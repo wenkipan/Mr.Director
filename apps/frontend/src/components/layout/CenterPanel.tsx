@@ -4,16 +4,23 @@ import { useAppStore } from '../../stores/appStore';
 import { TimelineComposition } from '../../remotion/TimelineComposition';
 import { calculateTotalFrames } from '../../lib/timelineAdapter';
 import { useAutoSave } from '../../hooks/useAutoSave';
+import { useMediaPrefetch } from '../../hooks/useMediaPrefetch';
+import { useTimelineSelection } from '../timeline/useTimelineSelection';
 import TimelineEditor from '../timeline/TimelineEditor';
+import TimelineToolbar from '../timeline/TimelineToolbar';
 import Toolbar from './Toolbar';
 
 export default function CenterPanel() {
   const { timeline, selectedMedia, currentFrame, setCurrentFrame, setPlaying, updateTimeline, undo, redo } =
     useAppStore();
   const playerRef = useRef<PlayerRef>(null);
+  const { selectedClipIds, selectClip, clearSelection } = useTimelineSelection();
 
   // Auto-save on timeline edits (1s debounce)
   useAutoSave(1000);
+
+  // Prefetch all media pool assets so edits don't trigger re-downloads
+  useMediaPrefetch(timeline);
 
   // Listen for undo/redo custom events dispatched from TimelineEditor keyboard shortcuts
   useEffect(() => {
@@ -94,6 +101,14 @@ export default function CenterPanel() {
           />
         </div>
 
+        {/* Timeline Toolbar */}
+        <TimelineToolbar
+          timeline={timeline}
+          selectedClipIds={selectedClipIds}
+          currentTime={currentFrame / fps}
+          onTimelineChange={handleTimelineChange}
+        />
+
         {/* Timeline Editor */}
         <div className="h-[250px] border-t border-zinc-800 bg-zinc-900">
           <TimelineEditor
@@ -101,6 +116,9 @@ export default function CenterPanel() {
             currentTime={currentFrame / fps}
             onSeek={handleTimelineSeek}
             onTimelineChange={handleTimelineChange}
+            selectedClipIds={selectedClipIds}
+            onSelectClip={selectClip}
+            onClearSelection={clearSelection}
           />
         </div>
       </div>
