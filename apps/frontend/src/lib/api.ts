@@ -16,7 +16,9 @@ export async function createProject(name: string = 'Untitled') {
 }
 
 export async function getProject(projectId: string) {
-  const res = await fetch(`${API_BASE}/projects/${projectId}`);
+  const res = await fetch(`${API_BASE}/projects/${projectId}`, {
+    cache: 'no-store',
+  });
   if (!res.ok) throw new Error(`Failed to get project: ${res.statusText}`);
   return res.json();
 }

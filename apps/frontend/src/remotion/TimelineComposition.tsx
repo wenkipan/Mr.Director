@@ -3,6 +3,7 @@ import type { TimelineProject, Clip as ClipType, VideoStyle } from '@mrdv2/share
 import { resolveMediaUrl } from '../lib/timelineAdapter';
 import { parseSrt, type SrtEntry } from '../lib/srtParser';
 import { useEffect, useState } from 'react';
+import { EditableText } from './EditableText';
 
 /** Renders a single SRT-backed subtitle clip, fetching & parsing the .srt file.
  *  In SSR mode, clip._srt_content is pre-populated by the backend so no fetch is needed. */
@@ -251,20 +252,38 @@ export const TimelineComposition: React.FC<TimelineCompositionProps> = ({ timeli
                       paddingBottom: `${((1 - (style?.position_y ?? 0.85)) * 100).toFixed(0)}%`,
                     }}
                   >
-                    <div
-                      style={{
-                        fontFamily: style?.font_family ?? 'sans-serif',
-                        fontSize: style?.font_size ?? 48,
-                        color: style?.color ?? '#FFFFFF',
-                        backgroundColor: style?.background ?? 'rgba(0,0,0,0.6)',
-                        padding: '4px 16px',
-                        borderRadius: 4,
-                        textAlign: 'center',
-                        maxWidth: '80%',
-                      }}
-                    >
-                      {clip.subtitle_text}
-                    </div>
+                    {(timeline as any)._ssr ? (
+                      <div
+                        style={{
+                          fontFamily: style?.font_family ?? 'sans-serif',
+                          fontSize: style?.font_size ?? 48,
+                          color: style?.color ?? '#FFFFFF',
+                          backgroundColor: style?.background ?? 'rgba(0,0,0,0.6)',
+                          padding: '4px 16px',
+                          borderRadius: 4,
+                          textAlign: 'center',
+                          maxWidth: '80%',
+                        }}
+                      >
+                        {clip.subtitle_text}
+                      </div>
+                    ) : (
+                      <EditableText
+                        clipId={clip.id}
+                        field="subtitle_text"
+                        text={clip.subtitle_text}
+                        style={{
+                          fontFamily: style?.font_family ?? 'sans-serif',
+                          fontSize: style?.font_size ?? 48,
+                          color: style?.color ?? '#FFFFFF',
+                          backgroundColor: style?.background ?? 'rgba(0,0,0,0.6)',
+                          padding: '4px 16px',
+                          borderRadius: 4,
+                          textAlign: 'center',
+                          maxWidth: '80%',
+                        }}
+                      />
+                    )}
                   </AbsoluteFill>
                 </Sequence>
               );
@@ -294,32 +313,62 @@ export const TimelineComposition: React.FC<TimelineCompositionProps> = ({ timeli
                       alignItems: 'flex-start',
                     }}
                   >
-                    <div
-                      style={{
-                        position: 'absolute',
-                        left: `${((style?.position_x ?? 0.5) * 100).toFixed(1)}%`,
-                        top: `${((style?.position_y ?? 0.5) * 100).toFixed(1)}%`,
-                        transform: 'translate(-50%, -50%)',
-                        fontFamily: style?.font_family ?? 'sans-serif',
-                        fontSize: style?.font_size ?? 48,
-                        color: style?.color ?? '#FFFFFF',
-                        backgroundColor: style?.background ?? 'transparent',
-                        textAlign: style?.text_align ?? 'center',
-                        fontWeight: style?.bold ? 'bold' : 'normal',
-                        fontStyle: style?.italic ? 'italic' : 'normal',
-                        padding:
-                          style?.background && style.background !== 'transparent'
-                            ? '4px 16px'
-                            : undefined,
-                        borderRadius:
-                          style?.background && style.background !== 'transparent'
-                            ? 4
-                            : undefined,
-                        whiteSpace: 'pre-wrap',
-                      }}
-                    >
-                      {clip.text_content}
-                    </div>
+                    {(timeline as any)._ssr ? (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          left: `${((style?.position_x ?? 0.5) * 100).toFixed(1)}%`,
+                          top: `${((style?.position_y ?? 0.5) * 100).toFixed(1)}%`,
+                          transform: 'translate(-50%, -50%)',
+                          fontFamily: style?.font_family ?? 'sans-serif',
+                          fontSize: style?.font_size ?? 48,
+                          color: style?.color ?? '#FFFFFF',
+                          backgroundColor: style?.background ?? 'transparent',
+                          textAlign: style?.text_align ?? 'center',
+                          fontWeight: style?.bold ? 'bold' : 'normal',
+                          fontStyle: style?.italic ? 'italic' : 'normal',
+                          padding:
+                            style?.background && style.background !== 'transparent'
+                              ? '4px 16px'
+                              : undefined,
+                          borderRadius:
+                            style?.background && style.background !== 'transparent'
+                              ? 4
+                              : undefined,
+                          whiteSpace: 'pre-wrap',
+                        }}
+                      >
+                        {clip.text_content}
+                      </div>
+                    ) : (
+                      <EditableText
+                        clipId={clip.id}
+                        field="text_content"
+                        text={clip.text_content}
+                        style={{
+                          position: 'absolute',
+                          left: `${((style?.position_x ?? 0.5) * 100).toFixed(1)}%`,
+                          top: `${((style?.position_y ?? 0.5) * 100).toFixed(1)}%`,
+                          transform: 'translate(-50%, -50%)',
+                          fontFamily: style?.font_family ?? 'sans-serif',
+                          fontSize: style?.font_size ?? 48,
+                          color: style?.color ?? '#FFFFFF',
+                          backgroundColor: style?.background ?? 'transparent',
+                          textAlign: style?.text_align ?? 'center',
+                          fontWeight: style?.bold ? 'bold' : 'normal',
+                          fontStyle: style?.italic ? 'italic' : 'normal',
+                          padding:
+                            style?.background && style.background !== 'transparent'
+                              ? '4px 16px'
+                              : undefined,
+                          borderRadius:
+                            style?.background && style.background !== 'transparent'
+                              ? 4
+                              : undefined,
+                          whiteSpace: 'pre-wrap',
+                        }}
+                      />
+                    )}
                   </AbsoluteFill>
                 </Sequence>
               );

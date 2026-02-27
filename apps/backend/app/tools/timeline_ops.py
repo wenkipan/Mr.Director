@@ -1,4 +1,4 @@
-"""Timeline operations: create_timeline, modify_timeline."""
+"""Timeline operations: get_timeline, create_timeline, modify_timeline."""
 
 from __future__ import annotations
 
@@ -11,6 +11,26 @@ from app.tools.registry import registry
 
 def _gen_id(prefix: str = "clip") -> str:
     return f"{prefix}_{uuid.uuid4().hex[:8]}"
+
+
+@registry.register(
+    name="get_timeline",
+    description="Get the full current timeline JSON including all clip details "
+    "(source_in_sec, source_out_sec, speed, video_style, subtitle_text, etc.). "
+    "Use this when you need precise clip properties before making modifications. "
+    "The system prompt only shows a summary.",
+    parameters={
+        "type": "OBJECT",
+        "properties": {},
+    },
+)
+async def get_timeline(args: dict, state) -> dict:
+    if not state.current_timeline:
+        return {"error": "No timeline exists. Use create_timeline first."}
+    return {
+        "project_id": state.project_id,
+        "timeline": state.current_timeline.model_dump(),
+    }
 
 
 @registry.register(

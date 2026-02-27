@@ -1,13 +1,10 @@
 """Tool registry for the ReAct agent. Decorator-based registration that
-auto-generates Gemini function declarations."""
+provides tool definitions in a provider-agnostic format."""
 
 from __future__ import annotations
 
-import inspect
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Callable, Awaitable
-
-from google.genai.types import FunctionDeclaration, Schema, Tool
 
 
 @dataclass
@@ -41,18 +38,16 @@ class ToolRegistry:
 
         return decorator
 
-    def as_gemini_tools(self) -> list[Tool]:
-        """Convert all registered tools to Gemini Tool format."""
-        declarations = []
-        for tool in self._tools.values():
-            declarations.append(
-                FunctionDeclaration(
-                    name=tool.name,
-                    description=tool.description,
-                    parameters=tool.parameters,
-                )
-            )
-        return [Tool(function_declarations=declarations)]
+    def as_tool_defs(self) -> list[dict]:
+        """Return all registered tools as plain dicts (provider-agnostic)."""
+        return [
+            {
+                "name": tool.name,
+                "description": tool.description,
+                "parameters": tool.parameters,
+            }
+            for tool in self._tools.values()
+        ]
 
     async def execute(self, name: str, args: dict, state: Any) -> dict:
         if name not in self._tools:

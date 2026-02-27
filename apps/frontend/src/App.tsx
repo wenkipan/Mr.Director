@@ -3,6 +3,7 @@ import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import MediaPanel from './components/layout/MediaPanel';
 import CenterPanel from './components/layout/CenterPanel';
 import ChatPanel from './components/layout/ChatPanel';
+import ClipPropertiesEditor from './components/layout/ClipPropertiesEditor';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useAppStore } from './stores/appStore';
 import { createProject, getProject } from './lib/api';
@@ -40,9 +41,17 @@ export default function App() {
   return (
     <div className="h-full bg-zinc-950 text-zinc-100">
       <PanelGroup direction="horizontal" className="h-full">
-        {/* Left: Media Browser */}
+        {/* Left: Media Browser + Clip Properties */}
         <Panel defaultSize={20} minSize={15} maxSize={30}>
-          <MediaPanel />
+          <PanelGroup direction="vertical" className="h-full">
+            <Panel defaultSize={50} minSize={20}>
+              <MediaPanel />
+            </Panel>
+            <PanelResizeHandle className="h-1 bg-zinc-800 hover:bg-blue-500 transition-colors" />
+            <Panel defaultSize={50} minSize={20}>
+              <ClipPropertiesEditor />
+            </Panel>
+          </PanelGroup>
         </Panel>
 
         <PanelResizeHandle className="w-1 bg-zinc-800 hover:bg-blue-500 transition-colors" />

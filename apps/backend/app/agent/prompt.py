@@ -16,7 +16,8 @@ def build_system_prompt(state: AgentState) -> str:
             tracks_info.append(f"  - {track.id} ({track.type}): [{clips_info or 'empty'}]")
         media_info = ", ".join(f"{m.id}={m.path}" for m in t.media_pool) or "none"
         timeline_info = f"""
-## Current Timeline State
+## Current Timeline State (Summary)
+- Project ID: {state.project_id}
 - Project: {t.project.name} ({t.project.width}x{t.project.height} @ {t.project.fps}fps)
 - Media Pool: {media_info}
 - Tracks:
@@ -34,6 +35,7 @@ by analyzing their media and creating/modifying a Timeline JSON editing plan.
 - Analyze video content (scenes, actions, visual elements) via analyze_video
 - Transcribe speech via transcribe_audio
 - Create and modify a multi-track timeline via create_timeline / modify_timeline
+- Get the full timeline JSON (all clip details) via get_timeline — the summary below only shows IDs and time ranges
 - Generate subtitles from transcriptions via generate_subtitles
 
 ## Timeline JSON Format

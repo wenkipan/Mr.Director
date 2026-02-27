@@ -1,11 +1,12 @@
 import { useRef, useCallback, useEffect, useMemo } from 'react';
 import { Player, type PlayerRef } from '@remotion/player';
 import { useAppStore } from '../../stores/appStore';
+import { useInlineEditStore } from '../../stores/inlineEditStore';
 import { TimelineComposition } from '../../remotion/TimelineComposition';
 import { calculateTotalFrames } from '../../lib/timelineAdapter';
 import { useAutoSave } from '../../hooks/useAutoSave';
 import { useMediaPrefetch } from '../../hooks/useMediaPrefetch';
-import { useTimelineSelection } from '../timeline/useTimelineSelection';
+import { useSelectionStore } from '../../stores/selectionStore';
 import TimelineEditor from '../timeline/TimelineEditor';
 import TimelineToolbar from '../timeline/TimelineToolbar';
 import Toolbar from './Toolbar';
@@ -14,7 +15,7 @@ export default function CenterPanel() {
   const { timeline, selectedMedia, currentFrame, setCurrentFrame, setPlaying, updateTimeline, undo, redo } =
     useAppStore();
   const playerRef = useRef<PlayerRef>(null);
-  const { selectedClipIds, selectClip, clearSelection } = useTimelineSelection();
+  const { selectedClipIds, selectClip, clearSelection } = useSelectionStore();
 
   // Auto-save on timeline edits (1s debounce)
   useAutoSave(1000);
@@ -33,6 +34,26 @@ export default function CenterPanel() {
       document.removeEventListener('timeline:redo', handleRedo);
     };
   }, [undo, redo]);
+
+  // Pause player when inline text editing starts; auto-commit if playback resumes
+  useEffect(() => {
+    const handleEditStart = () => {
+      playerRef.current?.pause();
+    };
+    document.addEventListener('inlineEdit:start', handleEditStart);
+    return () => document.removeEventListener('inlineEdit:start', handleEditStart);
+  }, []);
+
+  useEffect(() => {
+    const player = playerRef.current;
+    if (!player) return;
+    const handlePlay = () => {
+      const { editingClipId, commitEdit } = useInlineEditStore.getState();
+      if (editingClipId) commitEdit();
+    };
+    player.addEventListener('play', handlePlay as any);
+    return () => player.removeEventListener('play', handlePlay as any);
+  }, [!!timeline]);
 
   const handleTimelineSeek = useCallback(
     (timeSec: number) => {
@@ -97,6 +118,8 @@ export default function CenterPanel() {
             compositionWidth={timeline.project.width}
             compositionHeight={timeline.project.height}
             controls
+            clickToPlay={false}
+            doubleClickToFullscreen={false}
             style={{ width: '100%', maxHeight: '100%' }}
           />
         </div>

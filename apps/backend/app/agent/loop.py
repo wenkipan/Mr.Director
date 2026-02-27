@@ -1,4 +1,4 @@
-"""ReAct Agent main loop — Gemini with function calling."""
+"""ReAct Agent main loop — provider-agnostic LLM with function calling."""
 
 from __future__ import annotations
 
@@ -6,18 +6,10 @@ import json
 import logging
 from pathlib import Path
 
-from google.genai.types import (
-    Content,
-    GenerateContentConfig,
-    Part,
-    FunctionCallingConfig,
-    ToolConfig,
-)
-
 from app.agent.state import AgentState
 from app.agent.prompt import build_system_prompt
 from app.config import settings
-from app.services.gemini_client import get_client
+from app.services.llm import get_provider
 from app.services.ws_manager import ws_manager
 from app.tools.registry import registry
 
@@ -40,149 +32,115 @@ USER_FACING_TOOLS = {"ask_user", "present_plan"}
 
 class ReActAgent:
     def __init__(self):
-        self.client = get_client()
+        self.provider = get_provider()
 
     async def run(self, user_message: str, state: AgentState) -> str:
         """Run the agent loop. Returns the agent's final text response."""
 
-        # Add user message to conversation history
+        # Add user message to conversation history (unified format)
         state.conversation_history.append({
             "role": "user",
-            "parts": [{"text": user_message}],
+            "content": user_message,
         })
 
         system_prompt = build_system_prompt(state)
+        tool_defs = registry.as_tool_defs()
 
         for iteration in range(MAX_ITERATIONS):
             logger.info(f"Agent iteration {iteration + 1}/{MAX_ITERATIONS}")
 
-            # Build contents for Gemini
-            contents = [
-                Content(role=msg["role"], parts=[Part.from_text(text=p["text"]) if "text" in p else Part(function_call=p.get("function_call")) if "function_call" in p else Part(function_response=p.get("function_response")) for p in msg["parts"]])
-                for msg in state.conversation_history
-            ]
-
             try:
-                response = self.client.models.generate_content(
-                    model=settings.gemini_model,
-                    contents=contents,
-                    config=GenerateContentConfig(
-                        system_instruction=system_prompt,
-                        tools=registry.as_gemini_tools(),
-                        tool_config=ToolConfig(
-                            function_calling_config=FunctionCallingConfig(
-                                mode="AUTO"
-                            )
-                        ),
-                        temperature=0.7,
-                    ),
+                response = await self.provider.generate(
+                    messages=state.conversation_history,
+                    system_prompt=system_prompt,
+                    tools=tool_defs,
+                    temperature=0.7,
                 )
             except Exception as e:
-                logger.error(f"Gemini API error: {e}")
+                logger.error(f"LLM API error: {e}")
                 await ws_manager.broadcast_agent_progress(state.project_id, event="agent_done")
                 return f"Sorry, I encountered an error communicating with the AI model: {str(e)}"
 
-            if not response.candidates:
+            # If no tool calls, the agent is done — return text
+            if not response.tool_calls:
+                final_text = response.text or "Sorry, I received an empty response. Please try again."
+                state.conversation_history.append({
+                    "role": "assistant",
+                    "content": final_text,
+                })
                 await ws_manager.broadcast_agent_progress(state.project_id, event="agent_done")
-                return "Sorry, I didn't get a valid response. Please try again."
+                return final_text
 
-            candidate = response.candidates[0]
-            if not candidate.content or not candidate.content.parts:
-                await ws_manager.broadcast_agent_progress(state.project_id, event="agent_done")
-                return "Sorry, I received an empty response. Please try again."
-
-            # Process response parts
-            has_function_call = False
+            # Process tool calls
             should_stop = False
             stop_text = ""
-            text_parts = []
 
-            for part in candidate.content.parts:
-                if part.function_call:
-                    has_function_call = True
-                    tool_name = part.function_call.name
-                    tool_args = dict(part.function_call.args) if part.function_call.args else {}
+            # Record all tool calls in one assistant message
+            state.conversation_history.append({
+                "role": "assistant",
+                "tool_calls": [{"name": tc.name, "args": tc.args} for tc in response.tool_calls],
+            })
 
-                    logger.info(f"Tool call: {tool_name}({json.dumps(tool_args, ensure_ascii=False)[:200]})")
+            for tc in response.tool_calls:
+                logger.info(f"Tool call: {tc.name}({json.dumps(tc.args, ensure_ascii=False)[:200]})")
 
-                    # Broadcast tool_start progress
-                    await ws_manager.broadcast_agent_progress(
+                # Broadcast tool_start progress
+                await ws_manager.broadcast_agent_progress(
+                    state.project_id,
+                    event="tool_start",
+                    tool_name=tc.name,
+                    tool_args=tc.args,
+                    iteration=iteration + 1,
+                )
+
+                # Execute the tool
+                result = await registry.execute(tc.name, tc.args, state)
+
+                logger.info(f"Tool result: {json.dumps(result, ensure_ascii=False)[:200]}")
+
+                # Broadcast tool_end progress
+                is_error = "error" in result
+                result_summary = json.dumps(result, ensure_ascii=False)[:300]
+                await ws_manager.broadcast_agent_progress(
+                    state.project_id,
+                    event="tool_end",
+                    tool_name=tc.name,
+                    result_summary=result_summary,
+                    is_error=is_error,
+                    iteration=iteration + 1,
+                )
+
+                # Add tool result to history
+                state.conversation_history.append({
+                    "role": "tool",
+                    "name": tc.name,
+                    "content": result,
+                })
+
+                # If timeline was modified, push update via WebSocket
+                if tc.name in TIMELINE_MODIFYING_TOOLS and state.current_timeline:
+                    await ws_manager.broadcast_timeline(
                         state.project_id,
-                        event="tool_start",
-                        tool_name=tool_name,
-                        tool_args=tool_args,
-                        iteration=iteration + 1,
+                        state.current_timeline.model_dump(),
                     )
+                    _save_timeline(state)
 
-                    # Execute the tool
-                    result = await registry.execute(tool_name, tool_args, state)
-
-                    logger.info(f"Tool result: {json.dumps(result, ensure_ascii=False)[:200]}")
-
-                    # Broadcast tool_end progress
-                    is_error = "error" in result
-                    result_summary = json.dumps(result, ensure_ascii=False)[:300]
-                    await ws_manager.broadcast_agent_progress(
-                        state.project_id,
-                        event="tool_end",
-                        tool_name=tool_name,
-                        result_summary=result_summary,
-                        is_error=is_error,
-                        iteration=iteration + 1,
-                    )
-
-                    # Add function call to history
-                    state.conversation_history.append({
-                        "role": "model",
-                        "parts": [{"function_call": {"name": tool_name, "args": tool_args}}],
-                    })
-
-                    # Add function response to history
-                    state.conversation_history.append({
-                        "role": "user",
-                        "parts": [{"function_response": {"name": tool_name, "response": result}}],
-                    })
-
-                    # If timeline was modified, push update via WebSocket
-                    if tool_name in TIMELINE_MODIFYING_TOOLS and state.current_timeline:
-                        await ws_manager.broadcast_timeline(
-                            state.project_id,
-                            state.current_timeline.model_dump(),
-                        )
-                        # Also save to disk
-                        _save_timeline(state)
-
-                    # User-facing tools: stop the loop and return the message
-                    if tool_name in USER_FACING_TOOLS:
-                        should_stop = True
-                        stop_text = tool_args.get("question") or tool_args.get("summary") or ""
-
-                elif part.text:
-                    text_parts.append(part.text)
+                # User-facing tools: stop the loop and return the message
+                if tc.name in USER_FACING_TOOLS:
+                    should_stop = True
+                    stop_text = tc.args.get("question") or tc.args.get("summary") or ""
 
             # If a user-facing tool was called, return its message to the user
             if should_stop:
-                final_text = "\n".join(text_parts) if text_parts else stop_text
+                final_text = response.text or stop_text
                 state.conversation_history.append({
-                    "role": "model",
-                    "parts": [{"text": final_text}],
+                    "role": "assistant",
+                    "content": final_text,
                 })
                 await ws_manager.broadcast_agent_progress(state.project_id, event="agent_done")
                 return final_text
 
-            # If there were function calls, continue the loop
-            if has_function_call:
-                continue
-
-            # If we only got text, the agent is done
-            if text_parts:
-                final_text = "\n".join(text_parts)
-                state.conversation_history.append({
-                    "role": "model",
-                    "parts": [{"text": final_text}],
-                })
-                await ws_manager.broadcast_agent_progress(state.project_id, event="agent_done")
-                return final_text
+            # Continue the loop for the next iteration
 
         await ws_manager.broadcast_agent_progress(state.project_id, event="agent_done")
         return "I've reached the maximum number of reasoning steps. Please try breaking your request into smaller parts."

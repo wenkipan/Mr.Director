@@ -36,6 +36,7 @@ interface AppStore {
   setTimeline: (t: TimelineProject | null) => void;
 
   // Timeline editing (with undo support)
+  setTimelineSilent: (t: TimelineProject) => void;
   updateTimeline: (newTimeline: TimelineProject) => void;
   undoStack: TimelineProject[];
   redoStack: TimelineProject[];
@@ -90,6 +91,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
   redoStack: [],
   timelineDirty: false,
   setTimelineDirty: (d) => set({ timelineDirty: d }),
+
+  setTimelineSilent: (t) => set({ timeline: t, timelineDirty: true }),
 
   updateTimeline: (newTimeline) => {
     const { timeline, undoStack } = get();
