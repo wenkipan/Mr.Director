@@ -3,7 +3,7 @@ import { useInlineEditStore } from '../stores/inlineEditStore';
 
 interface EditableTextProps {
   clipId: string;
-  field: 'subtitle_text' | 'text_content';
+  field: 'subtitle_text';
   text: string;
   style: React.CSSProperties;
 }

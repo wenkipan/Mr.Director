@@ -42,10 +42,9 @@ by analyzing their media and creating/modifying a Timeline JSON editing plan.
 The timeline has:
 - project: name, width, height, fps
 - media_pool: array of {{id, path, type, duration_sec, width, height}}
-- tracks: array of {{id, type (video|audio|subtitle|text), clips}}
+- tracks: array of {{id, type (video|audio|subtitle), clips}}
 - Each clip: {{id, type, media_id, source_in_sec, source_out_sec, timeline_start_sec, duration_sec, speed}}
-- Subtitle clips also have: subtitle_text, subtitle_style
-- Text overlay clips also have: text_content, text_style {{position_x (0-1), position_y (0-1), font_family, font_size, color, background, text_align, bold, italic}}
+- Subtitle clips also have: subtitle_text, subtitle_style {{position_x (0-1, default 0.5), position_y (0-1, default 0.85), font_family, font_size, color, background (default rgba(0,0,0,0.6)), text_align (left|center|right), bold, italic}}
 - Video/image clips can have: video_style {{position_x (0-1, center X), position_y (0-1, center Y), width (0-1, fraction of frame), height (0-1, fraction of frame), opacity (0-1), fit (contain|cover|fill), crop_left/crop_top/crop_right/crop_bottom (0-0.9, fraction to crop from each edge), border_radius (px)}}
 - Picture-in-Picture: place main video on the first video track (full frame, no video_style needed), then add PiP video on a second video track with video_style (e.g., position_x=0.8, position_y=0.2, width=0.3, height=0.3 for top-right corner)
 - Track order determines layering: later tracks in the array render on top of earlier tracks

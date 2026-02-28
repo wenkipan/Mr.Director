@@ -106,6 +106,7 @@ Backend env vars (prefix `MRDV2_`, loaded from `apps/backend/.env`):
 
 ## Conventions
 
+- 在发现更好的实现时要反驳用户，必要时质疑新的需求是否有必要存在
 - Python: snake_case files and variables
 - TypeScript: PascalCase components (`ChatPanel.tsx`), camelCase for hooks/utils
 - Tool registration uses `@registry.register()` decorator pattern

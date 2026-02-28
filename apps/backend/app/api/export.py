@@ -8,7 +8,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from app.config import settings
-from app.models.timeline import TimelineProject
+from app.models.timeline import TimelineProject, migrate_project_data
 from app.services.export_jobs import create_job, get_job
 from app.services.remotion_export import run_remotion_export
 from app.services.otio_export import export_otio_file
@@ -48,7 +48,7 @@ def _load_timeline(project_id: str) -> TimelineProject:
     if not project_path.exists():
         raise HTTPException(status_code=404, detail=f"Project not found: {project_id}")
 
-    data = json.loads(project_path.read_text())
+    data = migrate_project_data(json.loads(project_path.read_text()))
     timeline = TimelineProject(**data)
 
     if not timeline.tracks:

@@ -17,14 +17,6 @@ export interface MediaAsset {
 }
 
 export interface SubtitleStyle {
-  font_family?: string;
-  font_size?: number;
-  color?: string;
-  background?: string;
-  position_y?: number;
-}
-
-export interface TextStyle {
   position_x?: number;
   position_y?: number;
   font_family?: string;
@@ -52,7 +44,7 @@ export interface VideoStyle {
 
 export interface Clip {
   id: string;
-  type: 'video' | 'audio' | 'subtitle' | 'text';
+  type: 'video' | 'audio' | 'subtitle';
   media_id?: string;
   source_in_sec?: number;
   source_out_sec?: number;
@@ -61,15 +53,13 @@ export interface Clip {
   speed?: number;
   subtitle_text?: string;
   subtitle_style?: SubtitleStyle;
-  text_content?: string;
-  text_style?: TextStyle;
   video_style?: VideoStyle;
 }
 
 export interface Track {
   id: string;
   name?: string;
-  type: 'video' | 'audio' | 'subtitle' | 'text';
+  type: 'video' | 'audio' | 'subtitle';
   locked?: boolean;
   muted?: boolean;
   clips: Clip[];

@@ -49,7 +49,7 @@ async def get_timeline(args: dict, state) -> dict:
             },
             "tracks": {
                 "type": "STRING",
-                "description": "JSON array of tracks: [{id, name, type, clips: [{id, type, media_id, source_in_sec, source_out_sec, timeline_start_sec, duration_sec, speed, subtitle_text, text_content, text_style, video_style}]}]",
+                "description": "JSON array of tracks: [{id, name, type, clips: [{id, type, media_id, source_in_sec, source_out_sec, timeline_start_sec, duration_sec, speed, subtitle_text, subtitle_style, video_style}]}]",
             },
         },
         "required": ["name"],
@@ -110,9 +110,9 @@ async def create_timeline(args: dict, state) -> dict:
                 "description": "JSON object with operation-specific parameters. "
                 "add_track: {id, name, type}. "
                 "remove_track: {track_id}. "
-                "add_clip: {track_id, clip: {id, type, media_id, source_in_sec, source_out_sec, timeline_start_sec, duration_sec, speed, subtitle_text, text_content, text_style, video_style}}. "
+                "add_clip: {track_id, clip: {id, type, media_id, source_in_sec, source_out_sec, timeline_start_sec, duration_sec, speed, subtitle_text, subtitle_style, video_style}}. "
                 "remove_clip: {track_id, clip_id}. "
-                "modify_clip: {track_id, clip_id, updates: {field: value, ...}}. video_style: {position_x, position_y, width, height, opacity, fit, crop_left, crop_top, crop_right, crop_bottom, border_radius}. "
+                "modify_clip: {track_id, clip_id, updates: {field: value, ...}}. subtitle_style: {position_x, position_y, font_family, font_size, color, background, text_align, bold, italic}. video_style: {position_x, position_y, width, height, opacity, fit, crop_left, crop_top, crop_right, crop_bottom, border_radius}. "
                 "split_clip: {track_id, clip_id, split_at_sec (timeline time)}. "
                 "add_media: {id, path, type, duration_sec, width, height}. "
                 "set_project_meta: {name, width, height, fps}.",

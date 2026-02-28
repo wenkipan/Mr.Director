@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { useAppStore } from './appStore';
 import { updateClipInTimeline } from '../components/timeline/timelineUtils';
 
-type EditingField = 'subtitle_text' | 'text_content';
+type EditingField = 'subtitle_text';
 
 interface InlineEditStore {
   editingClipId: string | null;
@@ -41,10 +41,7 @@ export const useInlineEditStore = create<InlineEditStore>((set, get) => ({
     if (draftText !== originalText) {
       const { timeline, updateTimeline } = useAppStore.getState();
       if (timeline) {
-        const updates =
-          editingField === 'subtitle_text'
-            ? { subtitle_text: draftText }
-            : { text_content: draftText };
+        const updates = { subtitle_text: draftText };
         const newTimeline = updateClipInTimeline(timeline, editingClipId, updates);
         updateTimeline(newTimeline);
       }

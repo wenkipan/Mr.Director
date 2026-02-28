@@ -12,7 +12,7 @@ from app.agent.loop import ReActAgent
 from app.agent.state import AgentState
 from app.config import settings
 from app.models.messages import ChatRequest, ChatResponse
-from app.models.timeline import TimelineProject
+from app.models.timeline import TimelineProject, migrate_project_data
 from app.services.ws_manager import ws_manager
 
 router = APIRouter()
@@ -29,7 +29,7 @@ def _get_or_create_state(project_id: str) -> AgentState:
         path = Path(settings.projects_dir) / f"{project_id}.json"
         if path.exists():
             try:
-                data = json.loads(path.read_text())
+                data = migrate_project_data(json.loads(path.read_text()))
                 state.current_timeline = TimelineProject(**data)
             except Exception as e:
                 logger.warning(f"Failed to load timeline for {project_id}: {e}")

@@ -124,9 +124,6 @@ export default function ClipPropertiesEditor() {
         {clip.type === 'audio' && (
           <div className="text-zinc-500 text-xs">No editable properties for audio clips.</div>
         )}
-        {clip.type === 'text' && (
-          <div className="text-zinc-500 text-xs">No editable properties for text clips.</div>
-        )}
       </div>
     </div>
   );

@@ -1,5 +1,5 @@
 import { AbsoluteFill, Sequence, Video, Audio, useVideoConfig, useCurrentFrame } from 'remotion';
-import type { TimelineProject, Clip as ClipType, VideoStyle } from '@mrdv2/shared';
+import type { TimelineProject, Clip as ClipType, VideoStyle, SubtitleStyle } from '@mrdv2/shared';
 import { resolveMediaUrl } from '../lib/timelineAdapter';
 import { parseSrt, type SrtEntry } from '../lib/srtParser';
 import { useEffect, useState } from 'react';
@@ -45,23 +45,24 @@ const SrtSubtitleClip: React.FC<{
   const style = clip.subtitle_style;
 
   return (
-    <AbsoluteFill
-      style={{
-        justifyContent: 'flex-end',
-        alignItems: 'center',
-        paddingBottom: `${((1 - (style?.position_y ?? 0.85)) * 100).toFixed(0)}%`,
-      }}
-    >
+    <AbsoluteFill>
       <div
         style={{
+          position: 'absolute',
+          left: `${((style?.position_x ?? 0.5) * 100).toFixed(1)}%`,
+          top: `${((style?.position_y ?? 0.85) * 100).toFixed(1)}%`,
+          transform: 'translate(-50%, -50%)',
           fontFamily: style?.font_family ?? 'sans-serif',
           fontSize: style?.font_size ?? 48,
           color: style?.color ?? '#FFFFFF',
           backgroundColor: style?.background ?? 'rgba(0,0,0,0.6)',
+          textAlign: (style?.text_align ?? 'center') as React.CSSProperties['textAlign'],
+          fontWeight: style?.bold ? 'bold' : 'normal',
+          fontStyle: style?.italic ? 'italic' : 'normal',
           padding: '4px 16px',
           borderRadius: 4,
-          textAlign: 'center',
           maxWidth: '80%',
+          whiteSpace: 'pre-wrap',
         }}
       >
         {active.text}
@@ -154,7 +155,6 @@ export const TimelineComposition: React.FC<TimelineCompositionProps> = ({ timeli
   const videoTracks = timeline.tracks.filter((t) => t.type === 'video');
   const audioTracks = timeline.tracks.filter((t) => t.type === 'audio');
   const subtitleTracks = timeline.tracks.filter((t) => t.type === 'subtitle');
-  const textTracks = timeline.tracks.filter((t) => t.type === 'text');
 
   return (
     <AbsoluteFill style={{ backgroundColor: '#000' }}>
@@ -238,6 +238,26 @@ export const TimelineComposition: React.FC<TimelineCompositionProps> = ({ timeli
               // Inline subtitle text
               if (!clip.subtitle_text) return null;
               const style = clip.subtitle_style;
+              const bg = style?.background ?? 'rgba(0,0,0,0.6)';
+              const hasBg = bg && bg !== 'transparent';
+
+              const textCss: React.CSSProperties = {
+                position: 'absolute',
+                left: `${((style?.position_x ?? 0.5) * 100).toFixed(1)}%`,
+                top: `${((style?.position_y ?? 0.85) * 100).toFixed(1)}%`,
+                transform: 'translate(-50%, -50%)',
+                fontFamily: style?.font_family ?? 'sans-serif',
+                fontSize: style?.font_size ?? 48,
+                color: style?.color ?? '#FFFFFF',
+                backgroundColor: bg,
+                textAlign: (style?.text_align ?? 'center') as React.CSSProperties['textAlign'],
+                fontWeight: style?.bold ? 'bold' : 'normal',
+                fontStyle: style?.italic ? 'italic' : 'normal',
+                padding: hasBg ? '4px 16px' : undefined,
+                borderRadius: hasBg ? 4 : undefined,
+                maxWidth: '80%',
+                whiteSpace: 'pre-wrap',
+              };
 
               return (
                 <Sequence
@@ -245,43 +265,15 @@ export const TimelineComposition: React.FC<TimelineCompositionProps> = ({ timeli
                   from={startFrame}
                   durationInFrames={durationFrames}
                 >
-                  <AbsoluteFill
-                    style={{
-                      justifyContent: 'flex-end',
-                      alignItems: 'center',
-                      paddingBottom: `${((1 - (style?.position_y ?? 0.85)) * 100).toFixed(0)}%`,
-                    }}
-                  >
+                  <AbsoluteFill>
                     {(timeline as any)._ssr ? (
-                      <div
-                        style={{
-                          fontFamily: style?.font_family ?? 'sans-serif',
-                          fontSize: style?.font_size ?? 48,
-                          color: style?.color ?? '#FFFFFF',
-                          backgroundColor: style?.background ?? 'rgba(0,0,0,0.6)',
-                          padding: '4px 16px',
-                          borderRadius: 4,
-                          textAlign: 'center',
-                          maxWidth: '80%',
-                        }}
-                      >
-                        {clip.subtitle_text}
-                      </div>
+                      <div style={textCss}>{clip.subtitle_text}</div>
                     ) : (
                       <EditableText
                         clipId={clip.id}
                         field="subtitle_text"
                         text={clip.subtitle_text}
-                        style={{
-                          fontFamily: style?.font_family ?? 'sans-serif',
-                          fontSize: style?.font_size ?? 48,
-                          color: style?.color ?? '#FFFFFF',
-                          backgroundColor: style?.background ?? 'rgba(0,0,0,0.6)',
-                          padding: '4px 16px',
-                          borderRadius: 4,
-                          textAlign: 'center',
-                          maxWidth: '80%',
-                        }}
+                        style={textCss}
                       />
                     )}
                   </AbsoluteFill>
@@ -290,90 +282,6 @@ export const TimelineComposition: React.FC<TimelineCompositionProps> = ({ timeli
             }),
       )}
 
-      {/* Text overlay tracks (on top of subtitles) */}
-      {textTracks.map((track) =>
-        track.muted
-          ? null
-          : track.clips.map((clip) => {
-              const startFrame = Math.round(clip.timeline_start_sec * fps);
-              const durationFrames = Math.round(clip.duration_sec * fps);
-
-              if (!clip.text_content) return null;
-              const style = clip.text_style;
-
-              return (
-                <Sequence
-                  key={clip.id}
-                  from={startFrame}
-                  durationInFrames={durationFrames}
-                >
-                  <AbsoluteFill
-                    style={{
-                      justifyContent: 'flex-start',
-                      alignItems: 'flex-start',
-                    }}
-                  >
-                    {(timeline as any)._ssr ? (
-                      <div
-                        style={{
-                          position: 'absolute',
-                          left: `${((style?.position_x ?? 0.5) * 100).toFixed(1)}%`,
-                          top: `${((style?.position_y ?? 0.5) * 100).toFixed(1)}%`,
-                          transform: 'translate(-50%, -50%)',
-                          fontFamily: style?.font_family ?? 'sans-serif',
-                          fontSize: style?.font_size ?? 48,
-                          color: style?.color ?? '#FFFFFF',
-                          backgroundColor: style?.background ?? 'transparent',
-                          textAlign: style?.text_align ?? 'center',
-                          fontWeight: style?.bold ? 'bold' : 'normal',
-                          fontStyle: style?.italic ? 'italic' : 'normal',
-                          padding:
-                            style?.background && style.background !== 'transparent'
-                              ? '4px 16px'
-                              : undefined,
-                          borderRadius:
-                            style?.background && style.background !== 'transparent'
-                              ? 4
-                              : undefined,
-                          whiteSpace: 'pre-wrap',
-                        }}
-                      >
-                        {clip.text_content}
-                      </div>
-                    ) : (
-                      <EditableText
-                        clipId={clip.id}
-                        field="text_content"
-                        text={clip.text_content}
-                        style={{
-                          position: 'absolute',
-                          left: `${((style?.position_x ?? 0.5) * 100).toFixed(1)}%`,
-                          top: `${((style?.position_y ?? 0.5) * 100).toFixed(1)}%`,
-                          transform: 'translate(-50%, -50%)',
-                          fontFamily: style?.font_family ?? 'sans-serif',
-                          fontSize: style?.font_size ?? 48,
-                          color: style?.color ?? '#FFFFFF',
-                          backgroundColor: style?.background ?? 'transparent',
-                          textAlign: style?.text_align ?? 'center',
-                          fontWeight: style?.bold ? 'bold' : 'normal',
-                          fontStyle: style?.italic ? 'italic' : 'normal',
-                          padding:
-                            style?.background && style.background !== 'transparent'
-                              ? '4px 16px'
-                              : undefined,
-                          borderRadius:
-                            style?.background && style.background !== 'transparent'
-                              ? 4
-                              : undefined,
-                          whiteSpace: 'pre-wrap',
-                        }}
-                      />
-                    )}
-                  </AbsoluteFill>
-                </Sequence>
-              );
-            }),
-      )}
     </AbsoluteFill>
   );
 };

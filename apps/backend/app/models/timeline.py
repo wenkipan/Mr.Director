@@ -2,20 +2,12 @@ from pydantic import BaseModel, Field
 
 
 class SubtitleStyle(BaseModel):
+    position_x: float = 0.5
+    position_y: float = 0.85
     font_family: str = "sans-serif"
     font_size: int = 48
     color: str = "#FFFFFF"
     background: str = "rgba(0,0,0,0.6)"
-    position_y: float = 0.85
-
-
-class TextStyle(BaseModel):
-    position_x: float = 0.5
-    position_y: float = 0.5
-    font_family: str = "sans-serif"
-    font_size: int = 48
-    color: str = "#FFFFFF"
-    background: str = "transparent"
     text_align: str = "center"  # "left" | "center" | "right"
     bold: bool = False
     italic: bool = False
@@ -37,7 +29,7 @@ class VideoStyle(BaseModel):
 
 class Clip(BaseModel):
     id: str
-    type: str  # "video" | "audio" | "subtitle" | "text"
+    type: str  # "video" | "audio" | "subtitle"
     media_id: str | None = None
     source_in_sec: float = 0
     source_out_sec: float | None = None
@@ -46,15 +38,13 @@ class Clip(BaseModel):
     speed: float = 1.0
     subtitle_text: str | None = None
     subtitle_style: SubtitleStyle | None = None
-    text_content: str | None = None
-    text_style: TextStyle | None = None
     video_style: VideoStyle | None = None
 
 
 class Track(BaseModel):
     id: str
     name: str | None = None
-    type: str  # "video" | "audio" | "subtitle" | "text"
+    type: str  # "video" | "audio" | "subtitle"
     locked: bool = False
     muted: bool = False
     clips: list[Clip] = []
@@ -83,3 +73,24 @@ class TimelineProject(BaseModel):
     project: ProjectMeta
     media_pool: list[MediaAsset] = []
     tracks: list[Track] = []
+
+
+def migrate_project_data(data: dict) -> dict:
+    """Migrate legacy project JSON: convert text tracks/clips → subtitle."""
+    for track in data.get("tracks", []):
+        if track.get("type") == "text":
+            track["type"] = "subtitle"
+        for clip in track.get("clips", []):
+            if clip.get("type") == "text":
+                clip["type"] = "subtitle"
+            # Move text_content → subtitle_text
+            if clip.get("text_content") and not clip.get("subtitle_text"):
+                clip["subtitle_text"] = clip.pop("text_content")
+            else:
+                clip.pop("text_content", None)
+            # Move text_style → subtitle_style
+            if clip.get("text_style") and not clip.get("subtitle_style"):
+                clip["subtitle_style"] = clip.pop("text_style")
+            else:
+                clip.pop("text_style", None)
+    return data

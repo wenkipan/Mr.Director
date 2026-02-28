@@ -15,5 +15,4 @@ export const TRACK_COLORS: Record<string, string> = {
   video: '#3b82f6',
   audio: '#22c55e',
   subtitle: '#eab308',
-  text: '#a855f7',
 };

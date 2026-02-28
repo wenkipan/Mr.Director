@@ -105,7 +105,7 @@ export default function TimelineTrackHeaders({
   );
 
   const handleAddTrack = useCallback(
-    (type: 'video' | 'audio' | 'subtitle' | 'text') => {
+    (type: 'video' | 'audio' | 'subtitle') => {
       const id = generateTrackId();
       const count = timeline.tracks.filter((t) => t.type === type).length + 1;
       const name = `${type.charAt(0).toUpperCase() + type.slice(1)} ${count}`;

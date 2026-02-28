@@ -5,7 +5,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 
 from app.config import settings
-from app.models.timeline import TimelineProject
+from app.models.timeline import TimelineProject, migrate_project_data
 
 router = APIRouter()
 
@@ -37,7 +37,7 @@ async def get_project(project_id: str):
     path = _projects_dir() / f"{project_id}.json"
     if not path.exists():
         raise HTTPException(status_code=404, detail=f"Project not found: {project_id}")
-    data = json.loads(path.read_text())
+    data = migrate_project_data(json.loads(path.read_text()))
     return {"project_id": project_id, "timeline": data}
 
 
