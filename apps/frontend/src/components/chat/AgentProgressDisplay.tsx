@@ -1,8 +1,10 @@
+import { useState } from 'react';
 import { useAppStore } from '../../stores/appStore';
 import ToolCallCard from './ToolCallCard';
 
 export default function AgentProgressDisplay() {
   const { agentProgress } = useAppStore();
+  const [showReasoning, setShowReasoning] = useState(false);
 
   if (!agentProgress.isActive && agentProgress.toolCalls.length === 0) {
     return null;
@@ -10,6 +12,22 @@ export default function AgentProgressDisplay() {
 
   return (
     <div className="space-y-2 my-2">
+      {agentProgress.reasoning && (
+        <div
+          className="bg-amber-900/20 border border-amber-700/30 rounded-lg px-3 py-2 text-xs cursor-pointer"
+          onClick={() => setShowReasoning(!showReasoning)}
+        >
+          <div className="flex items-center gap-2 text-amber-400/80">
+            <span>{showReasoning ? '\u25be' : '\u25b8'}</span>
+            <span className="font-medium">Thinking</span>
+          </div>
+          {showReasoning && (
+            <div className="mt-2 text-zinc-400 whitespace-pre-wrap max-h-48 overflow-y-auto">
+              {agentProgress.reasoning}
+            </div>
+          )}
+        </div>
+      )}
       {agentProgress.toolCalls.map((tc, i) => (
         <ToolCallCard key={`${tc.iteration}-${tc.toolName}-${i}`} toolCall={tc} />
       ))}

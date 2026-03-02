@@ -16,6 +16,8 @@ interface DragState {
   widthPx: number | null;
   /** Override left in px for trim-left operations */
   leftPx: number | null;
+  /** When true, all selected clips move together */
+  isMultiMove?: boolean;
 }
 
 interface TimelineClipLayerProps {
@@ -67,6 +69,10 @@ export default function TimelineClipLayer({
           const top = RULER_HEIGHT + trackIndex * TRACK_HEIGHT + CLIP_PADDING - scrollTop;
           const width = clip.duration_sec * pixelsPerSec;
           const isDragging = dragState?.clipId === clip.id;
+          const isMoving = dragState?.dragType === 'move' && (
+            isDragging ||
+            (dragState.isMultiMove && selectedClipIds.has(clip.id))
+          );
 
           return (
             <TimelineClip
@@ -79,7 +85,7 @@ export default function TimelineClipLayer({
               width={width}
               height={clipHeight}
               selected={selectedClipIds.has(clip.id)}
-              dragOffsetPx={isDragging && dragState.dragType === 'move' ? dragState.offsetPx : 0}
+              dragOffsetPx={isMoving ? dragState!.offsetPx : 0}
               dragWidth={isDragging ? dragState.widthPx : null}
               dragLeft={isDragging ? dragState.leftPx : null}
               onSelect={onClipSelect}

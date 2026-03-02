@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from app.config import settings
 from app.models.timeline import TimelineProject, migrate_project_data
 from app.services.export_jobs import create_job, get_job
+from app.services.gpu_check import check_gpu
 from app.services.remotion_export import run_remotion_export
 from app.services.otio_export import export_otio_file
 from app.services.fcpxml_export import export_fcpxml_file
@@ -44,6 +45,15 @@ def _projects_dir() -> Path:
 
 
 def _load_timeline(project_id: str) -> TimelineProject:
+    from app.api.chat import get_or_create_state
+
+    state = get_or_create_state(project_id)
+    if state.current_timeline:
+        if not state.current_timeline.tracks:
+            raise HTTPException(status_code=400, detail="Timeline has no tracks to export")
+        return state.current_timeline
+
+    # Fallback: disk (project not yet loaded into memory)
     project_path = _projects_dir() / f"{project_id}.json"
     if not project_path.exists():
         raise HTTPException(status_code=404, detail=f"Project not found: {project_id}")
@@ -54,6 +64,24 @@ def _load_timeline(project_id: str) -> TimelineProject:
     if not timeline.tracks:
         raise HTTPException(status_code=400, detail="Timeline has no tracks to export")
     return timeline
+
+
+@router.get("/gpu-status")
+async def gpu_status():
+    """Pre-flight GPU availability check for Remotion rendering."""
+    if settings.export_gl not in ("auto", ""):
+        forced = settings.export_gl
+        return {
+            "gpu_available": forced in ("angle-egl", "egl", "vulkan", "angle"),
+            "gl_flag": forced,
+            "reason": f"Forced via MRDV2_EXPORT_GL={forced}",
+        }
+    status = check_gpu()
+    return {
+        "gpu_available": status.available,
+        "gl_flag": status.gl_flag,
+        "reason": status.reason,
+    }
 
 
 @router.post("")

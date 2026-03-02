@@ -27,7 +27,7 @@ ALLOWED_EXTENSIONS = {
             },
             "extensions": {
                 "type": "STRING",
-                "description": "Comma-separated file extensions to filter, e.g. '.mp4,.mov,.mkv'. Only the LAST suffix of a filename is matched (Python Path.suffix), so for a file like 'video.mp4.analysis.md' use '.md', NOT '.analysis.md'. Leave empty for all media files.",
+                "description": "Comma-separated file extensions to filter, e.g. '.mp4,.mov,.mkv'. Leave empty for all media files.",
             },
         },
         "required": ["directory"],

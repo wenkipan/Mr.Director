@@ -1,7 +1,8 @@
-"""Timeline operations: get_timeline, create_timeline, modify_timeline."""
+"""Timeline operations: get, create, manage, edit_clips, split_timeline."""
 
 from __future__ import annotations
 
+import json
 import uuid
 from copy import deepcopy
 
@@ -9,16 +10,58 @@ from app.models.timeline import TimelineProject, Track, Clip, MediaAsset, Projec
 from app.tools.registry import registry
 
 
+# ──────────────────────────────────────────────
+# Helpers
+# ──────────────────────────────────────────────
+
+
 def _gen_id(prefix: str = "clip") -> str:
     return f"{prefix}_{uuid.uuid4().hex[:8]}"
 
 
+def _find_track(timeline: TimelineProject, track_id: str) -> Track | None:
+    for track in timeline.tracks:
+        if track.id == track_id:
+            return track
+    return None
+
+
+def _find_clip_global(timeline: TimelineProject, clip_id: str) -> tuple[Track, Clip] | None:
+    """Find a clip by ID across all tracks. Returns (track, clip) or None."""
+    for track in timeline.tracks:
+        for clip in track.clips:
+            if clip.id == clip_id:
+                return track, clip
+    return None
+
+
+def _recompute_duration(clip: Clip) -> None:
+    """Recompute duration_sec from source range and speed."""
+    source_in = clip.source_in_sec or 0
+    source_out = clip.source_out_sec
+    if source_out is not None:
+        clip.duration_sec = (source_out - source_in) / (clip.speed or 1.0)
+
+
+def _parse_json_arg(raw, field_name: str = "arg") -> tuple[object, dict | None]:
+    """Parse a JSON string or pass through a dict/list. Returns (parsed, error_dict)."""
+    if isinstance(raw, str):
+        try:
+            return json.loads(raw), None
+        except json.JSONDecodeError as e:
+            return None, {"error": f"Invalid {field_name} JSON: {e}"}
+    return raw, None
+
+
+# ──────────────────────────────────────────────
+# get_timeline (unchanged)
+# ──────────────────────────────────────────────
+
+
 @registry.register(
     name="get_timeline",
-    description="Get the full current timeline JSON including all clip details "
-    "(source_in_sec, source_out_sec, speed, video_style, subtitle_text, etc.). "
-    "Use this when you need precise clip properties before making modifications. "
-    "The system prompt only shows a summary.",
+    description="Get the full current timeline JSON including all clip details. "
+    "Always call this before making modifications to understand current state.",
     parameters={
         "type": "OBJECT",
         "properties": {},
@@ -31,6 +74,11 @@ async def get_timeline(args: dict, state) -> dict:
         "project_id": state.project_id,
         "timeline": state.current_timeline.model_dump(),
     }
+
+
+# ──────────────────────────────────────────────
+# create_timeline (unchanged)
+# ──────────────────────────────────────────────
 
 
 @registry.register(
@@ -49,15 +97,13 @@ async def get_timeline(args: dict, state) -> dict:
             },
             "tracks": {
                 "type": "STRING",
-                "description": "JSON array of tracks: [{id, name, type, clips: [{id, type, media_id, source_in_sec, source_out_sec, timeline_start_sec, duration_sec, speed, subtitle_text, subtitle_style, video_style}]}]",
+                "description": "JSON array of tracks: [{id, name, type, clips: [{id, type, media_id, source_in_sec, source_out_sec, timeline_start_sec, speed, subtitle_text, subtitle_style, video_style}]}]",
             },
         },
         "required": ["name"],
     },
 )
 async def create_timeline(args: dict, state) -> dict:
-    import json
-
     name = args.get("name", "Untitled")
     width = int(args.get("width", 1920))
     height = int(args.get("height", 1080))
@@ -65,19 +111,27 @@ async def create_timeline(args: dict, state) -> dict:
 
     media_pool = []
     if args.get("media_pool"):
+        raw, err = _parse_json_arg(args["media_pool"], "media_pool")
+        if err:
+            return err
         try:
-            raw = json.loads(args["media_pool"]) if isinstance(args["media_pool"], str) else args["media_pool"]
             media_pool = [MediaAsset(**m) for m in raw]
         except Exception as e:
             return {"error": f"Invalid media_pool: {e}"}
 
     tracks = []
     if args.get("tracks"):
+        raw, err = _parse_json_arg(args["tracks"], "tracks")
+        if err:
+            return err
         try:
-            raw = json.loads(args["tracks"]) if isinstance(args["tracks"], str) else args["tracks"]
             for t in raw:
                 clips_raw = t.pop("clips", [])
-                clips = [Clip(**c) for c in clips_raw]
+                clips = []
+                for c in clips_raw:
+                    clip = Clip(**c)
+                    _recompute_duration(clip)
+                    clips.append(clip)
                 tracks.append(Track(**t, clips=clips))
         except Exception as e:
             return {"error": f"Invalid tracks: {e}"}
@@ -93,45 +147,42 @@ async def create_timeline(args: dict, state) -> dict:
     return {"success": True, "timeline": timeline.model_dump()}
 
 
+# ──────────────────────────────────────────────
+# manage_timeline — track / media / meta ops
+# ──────────────────────────────────────────────
+
+
 @registry.register(
-    name="modify_timeline",
-    description="Apply an operation to the current timeline. Operations: "
-    "add_track, remove_track, add_clip, remove_clip, modify_clip, "
-    "split_clip, add_media, set_project_meta.",
+    name="manage_timeline",
+    description="Manage timeline structure: add/remove tracks, add media to pool, update project settings. "
+    "Operations: add_track, remove_track, add_media, set_project_meta.",
     parameters={
         "type": "OBJECT",
         "properties": {
             "operation": {
                 "type": "STRING",
-                "description": "One of: add_track, remove_track, add_clip, remove_clip, modify_clip, split_clip, add_media, set_project_meta",
+                "description": "One of: add_track, remove_track, add_media, set_project_meta",
             },
             "params": {
                 "type": "STRING",
-                "description": "JSON object with operation-specific parameters. "
-                "add_track: {id, name, type}. "
+                "description": "JSON object. "
+                "add_track: {id?, name?, type}. "
                 "remove_track: {track_id}. "
-                "add_clip: {track_id, clip: {id, type, media_id, source_in_sec, source_out_sec, timeline_start_sec, duration_sec, speed, subtitle_text, subtitle_style, video_style}}. "
-                "remove_clip: {track_id, clip_id}. "
-                "modify_clip: {track_id, clip_id, updates: {field: value, ...}}. subtitle_style: {position_x, position_y, font_family, font_size, color, background, text_align, bold, italic}. video_style: {position_x, position_y, width, height, opacity, fit, crop_left, crop_top, crop_right, crop_bottom, border_radius}. "
-                "split_clip: {track_id, clip_id, split_at_sec (timeline time)}. "
-                "add_media: {id, path, type, duration_sec, width, height}. "
-                "set_project_meta: {name, width, height, fps}.",
+                "add_media: {id, path, type, duration_sec?, width?, height?}. "
+                "set_project_meta: {name?, width?, height?, fps?}.",
             },
         },
         "required": ["operation", "params"],
     },
 )
-async def modify_timeline(args: dict, state) -> dict:
-    import json
-
+async def manage_timeline(args: dict, state) -> dict:
     if not state.current_timeline:
         return {"error": "No timeline exists. Use create_timeline first."}
 
     op = args["operation"]
-    try:
-        params = json.loads(args["params"]) if isinstance(args["params"], str) else args["params"]
-    except json.JSONDecodeError as e:
-        return {"error": f"Invalid params JSON: {e}"}
+    params, err = _parse_json_arg(args.get("params", "{}"), "params")
+    if err:
+        return err
 
     timeline = state.current_timeline
 
@@ -161,90 +212,240 @@ async def modify_timeline(args: dict, state) -> dict:
         timeline.tracks = [t for t in timeline.tracks if t.id != track_id]
         return {"success": True, "removed_track": track_id}
 
-    elif op == "add_clip":
-        track = _find_track(timeline, params["track_id"])
-        if not track:
-            return {"error": f"Track not found: {params['track_id']}"}
-        clip_data = params["clip"]
-        if "id" not in clip_data:
-            clip_data["id"] = _gen_id("clip")
-        clip = Clip(**clip_data)
-        track.clips.append(clip)
-        track.clips.sort(key=lambda c: c.timeline_start_sec)
-        return {"success": True, "added_clip": clip.model_dump()}
-
-    elif op == "remove_clip":
-        track = _find_track(timeline, params["track_id"])
-        if not track:
-            return {"error": f"Track not found: {params['track_id']}"}
-        track.clips = [c for c in track.clips if c.id != params["clip_id"]]
-        return {"success": True, "removed_clip": params["clip_id"]}
-
-    elif op == "modify_clip":
-        track = _find_track(timeline, params["track_id"])
-        if not track:
-            return {"error": f"Track not found: {params['track_id']}"}
-        clip = _find_clip(track, params["clip_id"])
-        if not clip:
-            return {"error": f"Clip not found: {params['clip_id']}"}
-        for key, val in params.get("updates", {}).items():
-            if hasattr(clip, key):
-                setattr(clip, key, val)
-        return {"success": True, "modified_clip": clip.model_dump()}
-
-    elif op == "split_clip":
-        track = _find_track(timeline, params["track_id"])
-        if not track:
-            return {"error": f"Track not found: {params['track_id']}"}
-        clip = _find_clip(track, params["clip_id"])
-        if not clip:
-            return {"error": f"Clip not found: {params['clip_id']}"}
-
-        split_at = params["split_at_sec"]  # timeline time
-        if split_at <= clip.timeline_start_sec or split_at >= clip.timeline_start_sec + clip.duration_sec:
-            return {"error": f"Split point {split_at}s is outside clip range"}
-
-        # Calculate split
-        offset_in_clip = split_at - clip.timeline_start_sec
-        speed = clip.speed or 1.0
-        source_split = (clip.source_in_sec or 0) + offset_in_clip * speed
-
-        # First half
-        clip1 = deepcopy(clip)
-        clip1.id = _gen_id("clip")
-        clip1.duration_sec = offset_in_clip
-        clip1.source_out_sec = source_split
-
-        # Second half
-        clip2 = deepcopy(clip)
-        clip2.id = _gen_id("clip")
-        clip2.timeline_start_sec = split_at
-        clip2.duration_sec = clip.duration_sec - offset_in_clip
-        clip2.source_in_sec = source_split
-
-        # Replace original with two halves
-        idx = track.clips.index(clip)
-        track.clips[idx:idx + 1] = [clip1, clip2]
-
-        return {
-            "success": True,
-            "clip_1": clip1.model_dump(),
-            "clip_2": clip2.model_dump(),
-        }
-
     else:
-        return {"error": f"Unknown operation: {op}"}
+        return {"error": f"Unknown operation: {op}. Use add_track, remove_track, add_media, or set_project_meta."}
 
 
-def _find_track(timeline: TimelineProject, track_id: str) -> Track | None:
+# ──────────────────────────────────────────────
+# edit_clips — add / update / delete (batch)
+# ──────────────────────────────────────────────
+
+
+def _exec_add(timeline: TimelineProject, op: dict) -> dict:
+    track_id = op.get("track_id")
+    if not track_id:
+        return {"error": "add: missing track_id"}
+
+    track = _find_track(timeline, track_id)
+    if not track:
+        return {"error": f"add: track not found: {track_id}"}
+
+    clip_type = op.get("type", track.type)
+    source_in = float(op.get("source_in_sec", 0))
+    source_out_raw = op.get("source_out_sec")
+    source_out = float(source_out_raw) if source_out_raw is not None else None
+    timeline_start = float(op.get("timeline_start_sec", 0))
+    speed = float(op.get("speed", 1.0))
+
+    # Build clip
+    clip_data = {
+        "id": _gen_id("clip"),
+        "type": clip_type,
+        "media_id": op.get("media_id"),
+        "source_in_sec": source_in,
+        "source_out_sec": source_out,
+        "timeline_start_sec": timeline_start,
+        "duration_sec": 0,  # will be recomputed
+        "speed": speed,
+    }
+    # Optional fields
+    for key in ("subtitle_text", "subtitle_style", "video_style"):
+        if op.get(key) is not None:
+            clip_data[key] = op[key]
+
+    clip = Clip(**clip_data)
+    _recompute_duration(clip)
+    track.clips.append(clip)
+    track.clips.sort(key=lambda c: c.timeline_start_sec)
+    return {"success": True, "clip": clip.model_dump()}
+
+
+def _exec_update(timeline: TimelineProject, op: dict) -> dict:
+    clip_id = op.get("clip_id")
+    if not clip_id:
+        return {"error": "update: missing clip_id"}
+
+    found = _find_clip_global(timeline, clip_id)
+    if not found:
+        return {"error": f"update: clip not found: {clip_id}"}
+
+    track, clip = found
+
+    # Updatable scalar fields
+    SCALAR_FIELDS = {"source_in_sec", "source_out_sec", "timeline_start_sec", "speed"}
+    for field in SCALAR_FIELDS:
+        if field in op:
+            setattr(clip, field, float(op[field]) if op[field] is not None else None)
+
+    # Updatable object/string fields
+    EXTRA_FIELDS = {"subtitle_text", "subtitle_style", "video_style"}
+    for field in EXTRA_FIELDS:
+        if field in op:
+            setattr(clip, field, op[field])
+
+    _recompute_duration(clip)
+    track.clips.sort(key=lambda c: c.timeline_start_sec)
+    return {"success": True, "clip": clip.model_dump()}
+
+
+def _exec_delete(timeline: TimelineProject, op: dict) -> dict:
+    clip_id = op.get("clip_id")
+    if not clip_id:
+        return {"error": "delete: missing clip_id"}
+
+    found = _find_clip_global(timeline, clip_id)
+    if not found:
+        return {"error": f"delete: clip not found: {clip_id}"}
+
+    track, clip = found
+    track.clips = [c for c in track.clips if c.id != clip_id]
+    return {"success": True, "deleted_clip": clip_id}
+
+
+_OP_DISPATCH = {
+    "add": _exec_add,
+    "update": _exec_update,
+    "delete": _exec_delete,
+}
+
+
+@registry.register(
+    name="edit_clips",
+    description="Add, update, or delete clips in a batch. Operations are applied sequentially; "
+    "on error all changes are rolled back. "
+    "Do NOT include split here — use split_timeline separately. "
+    "duration_sec is auto-computed from source_in_sec, source_out_sec, and speed; do not pass it.",
+    parameters={
+        "type": "OBJECT",
+        "properties": {
+            "operations": {
+                "type": "STRING",
+                "description": "JSON array of operations. Each object must have an 'op' field: "
+                "'add' — {op: 'add', track_id, type?, media_id?, source_in_sec, source_out_sec, timeline_start_sec, speed?, subtitle_text?, subtitle_style?, video_style?}. "
+                "'update' — {op: 'update', clip_id, source_in_sec?, source_out_sec?, timeline_start_sec?, speed?, subtitle_text?, subtitle_style?, video_style?}. "
+                "'delete' — {op: 'delete', clip_id}.",
+            },
+        },
+        "required": ["operations"],
+    },
+)
+async def edit_clips(args: dict, state) -> dict:
+    if not state.current_timeline:
+        return {"error": "No timeline exists. Use create_timeline first."}
+
+    operations, err = _parse_json_arg(args.get("operations", "[]"), "operations")
+    if err:
+        return err
+
+    if not isinstance(operations, list) or len(operations) == 0:
+        return {"error": "operations must be a non-empty array"}
+
+    snapshot = deepcopy(state.current_timeline)
+    results = []
+
+    for i, op_item in enumerate(operations):
+        op_type = op_item.get("op")
+        handler = _OP_DISPATCH.get(op_type)
+        if not handler:
+            state.current_timeline = snapshot
+            return {"error": f"Operation #{i}: unknown op '{op_type}'. Use add, update, or delete."}
+
+        result = handler(state.current_timeline, op_item)
+        if "error" in result:
+            state.current_timeline = snapshot
+            return {"error": f"Operation #{i} ({op_type}): {result['error']}", "failed_index": i}
+
+        results.append({"index": i, "op": op_type, **result})
+
+    return {"success": True, "applied": len(results), "results": results}
+
+
+# ──────────────────────────────────────────────
+# split_timeline — split by timeline time points
+# ──────────────────────────────────────────────
+
+
+@registry.register(
+    name="split_timeline",
+    description="Split all clips at one or more timeline time points. "
+    "No clip_id or track_id needed — automatically finds and splits every clip "
+    "that covers each time point. Returns new clip IDs for further editing.",
+    parameters={
+        "type": "OBJECT",
+        "properties": {
+            "split_points": {
+                "type": "STRING",
+                "description": "JSON array of timeline times (seconds) at which to cut. "
+                "Example: [15.0, 30.0]. Each point splits ALL clips covering that time.",
+            },
+        },
+        "required": ["split_points"],
+    },
+)
+async def split_timeline(args: dict, state) -> dict:
+    if not state.current_timeline:
+        return {"error": "No timeline exists. Use create_timeline first."}
+
+    raw, err = _parse_json_arg(args.get("split_points", "[]"), "split_points")
+    if err:
+        return err
+
+    if not isinstance(raw, list) or len(raw) == 0:
+        return {"error": "split_points must be a non-empty array of numbers"}
+
+    try:
+        split_points = sorted(float(p) for p in raw)
+    except (TypeError, ValueError) as e:
+        return {"error": f"split_points must be numbers: {e}"}
+
+    snapshot = deepcopy(state.current_timeline)
+    all_splits = []
+
+    for point in split_points:
+        splits_at_point = _split_at_time(state.current_timeline, point)
+        if splits_at_point:
+            all_splits.append({"split_at_sec": point, "splits": splits_at_point})
+
+    if not all_splits:
+        state.current_timeline = snapshot
+        return {"error": "No clips found at any of the given split points"}
+
+    return {"success": True, "results": all_splits}
+
+
+def _split_at_time(timeline: TimelineProject, split_at: float) -> list[dict]:
+    """Split all clips covering the given timeline time. Returns list of split results."""
+    results = []
+
     for track in timeline.tracks:
-        if track.id == track_id:
-            return track
-    return None
+        # Collect clips to split (iterate over a copy since we modify the list)
+        for clip in list(track.clips):
+            clip_end = clip.timeline_start_sec + clip.duration_sec
+            if clip.timeline_start_sec < split_at < clip_end:
+                # Perform split
+                offset = split_at - clip.timeline_start_sec
+                speed = clip.speed or 1.0
+                source_split = (clip.source_in_sec or 0) + offset * speed
 
+                clip1 = deepcopy(clip)
+                clip1.id = _gen_id("clip")
+                clip1.source_out_sec = source_split
+                _recompute_duration(clip1)
 
-def _find_clip(track: Track, clip_id: str) -> Clip | None:
-    for clip in track.clips:
-        if clip.id == clip_id:
-            return clip
-    return None
+                clip2 = deepcopy(clip)
+                clip2.id = _gen_id("clip")
+                clip2.timeline_start_sec = split_at
+                clip2.source_in_sec = source_split
+                _recompute_duration(clip2)
+
+                idx = track.clips.index(clip)
+                track.clips[idx:idx + 1] = [clip1, clip2]
+
+                results.append({
+                    "track_id": track.id,
+                    "original_clip_id": clip.id,
+                    "clip_before": clip1.model_dump(),
+                    "clip_after": clip2.model_dump(),
+                })
+
+    return results

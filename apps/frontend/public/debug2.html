@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+<script>
+  localStorage.setItem('mrdv2_projectId', 'proj_2334092722');
+</script>
+<script type="module">
+import { injectIntoGlobalHook } from "/@react-refresh";
+injectIntoGlobalHook(window);
+window.$RefreshReg$ = () => {};
+window.$RefreshSig$ = () => (type) => type;
+</script>
+<script type="module" src="/@vite/client"></script>
+</head>
+<body class="bg-zinc-950 text-zinc-100">
+  <div id="error-log" style="color:red; padding:20px; white-space:pre-wrap; font-family:monospace; font-size:12px;"></div>
+  <div id="root"></div>
+  <script>
+    window.onerror = function(msg, url, line, col, error) {
+      var el = document.getElementById('error-log');
+      el.textContent += 'ERROR: ' + msg + '\nFile: ' + url + '\nLine: ' + line + ':' + col + '\n';
+      if (error && error.stack) el.textContent += 'Stack: ' + error.stack + '\n\n';
+    };
+    window.addEventListener('unhandledrejection', function(e) {
+      var el = document.getElementById('error-log');
+      el.textContent += 'REJECTION: ' + (e.reason?.message || e.reason) + '\n';
+      if (e.reason && e.reason.stack) el.textContent += 'Stack: ' + e.reason.stack + '\n\n';
+    });
+  </script>
+  <script type="module" src="/src/main.tsx"></script>
+</body>
+</html>

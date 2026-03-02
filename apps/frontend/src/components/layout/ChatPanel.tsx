@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { useAppStore } from '../../stores/appStore';
 import { sendChatMessage } from '../../lib/api';
 import AgentProgressDisplay from '../chat/AgentProgressDisplay';
@@ -7,6 +7,14 @@ export default function ChatPanel() {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const { messages, addMessage, projectId, onAgentDone } = useAppStore();
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    ta.style.height = 'auto';
+    ta.style.height = `${ta.scrollHeight}px`;
+  }, [input]);
 
   const handleSend = useCallback(async () => {
     const text = input.trim();
@@ -68,20 +76,21 @@ export default function ChatPanel() {
 
       {/* Input */}
       <div className="p-3 border-t border-zinc-800">
-        <div className="flex gap-2">
-          <input
-            type="text"
+        <div className="flex gap-2 items-end">
+          <textarea
+            ref={textareaRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Describe your edit..."
             disabled={sending}
-            className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-blue-500 disabled:opacity-50"
+            rows={1}
+            className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-blue-500 disabled:opacity-50 resize-none max-h-40 overflow-y-auto"
           />
           <button
             onClick={handleSend}
             disabled={sending || !input.trim()}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
           >
             Send
           </button>

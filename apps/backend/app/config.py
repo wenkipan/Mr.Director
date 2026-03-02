@@ -14,12 +14,15 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     openai_base_url: str = ""
     openai_model: str = "gpt-4o"
+    # Thinking/reasoning mode: "off" | "dashscope" | "deepseek"
+    openai_thinking: str = "off"
 
     whisper_model_size: str = "medium"
     whisper_device: str = "auto"
     allowed_media_dirs: list[str] = []
     projects_dir: str = "./projects"
     exports_dir: str = "./projects/exports"
+    export_gl: str = "auto"  # auto | angle-egl | swangle | egl | vulkan
     cors_origins: list[str] = ["http://localhost:5173"]
     host: str = "0.0.0.0"
     port: int = 8000

@@ -26,6 +26,16 @@ export interface DragVisualState {
   widthPx: number | null;
   /** Override left in px (for trim-left) */
   leftPx: number | null;
+  /** When true, all clips in selectedClipIds should apply the same offsetPx */
+  isMultiMove: boolean;
+}
+
+interface MultiClipInfo {
+  clipId: string;
+  trackId: string;
+  originalStart: number;
+  duration: number;
+  trackClips: Clip[];
 }
 
 interface InternalDragState {
@@ -37,6 +47,8 @@ interface InternalDragState {
   pixelsPerSec: number;
   trackClips: Clip[];
   mediaMaxDuration: number | null;
+  isMultiMove: boolean;
+  multiClips: MultiClipInfo[];
 }
 
 export function useTimelineDrag(
@@ -46,6 +58,7 @@ export function useTimelineDrag(
   onTimelineChange: (newTimeline: TimelineProject) => void,
   onSnapGuide: (timeSec: number | null) => void,
   onSeek: (timeSec: number) => void,
+  selectedClipIds: Set<string>,
 ) {
   const [visualState, setVisualState] = useState<DragVisualState | null>(null);
   const dragRef = useRef<InternalDragState | null>(null);
@@ -56,6 +69,7 @@ export function useTimelineDrag(
   const onSnapGuideRef = useRef(onSnapGuide);
   const onSeekRef = useRef(onSeek);
   const pixelsPerSecRef = useRef(pixelsPerSec);
+  const selectedClipIdsRef = useRef(selectedClipIds);
 
   timelineRef.current = timeline;
   currentTimeRef.current = currentTime;
@@ -63,13 +77,18 @@ export function useTimelineDrag(
   onSnapGuideRef.current = onSnapGuide;
   onSeekRef.current = onSeek;
   pixelsPerSecRef.current = pixelsPerSec;
+  selectedClipIdsRef.current = selectedClipIds;
 
-  /** Compute snap targets on the fly, excluding the currently dragged clip */
+  /** Compute snap targets on the fly, excluding all moving clips */
   const computeSnap = useCallback((timeSec: number): { snappedTime: number; didSnap: boolean } => {
     const d = dragRef.current;
     const tl = timelineRef.current;
-    const excludeId = d?.clipId;
-    const edges = collectClipEdges(tl, excludeId);
+    let excludeIds: string | Set<string> | undefined = d?.clipId;
+    if (d?.isMultiMove) {
+      const set = new Set([d.clipId, ...d.multiClips.map((mc) => mc.clipId)]);
+      excludeIds = set;
+    }
+    const edges = collectClipEdges(tl, excludeIds);
     edges.push(currentTimeRef.current); // playhead
     edges.push(0); // timeline start
     const thresholdSec = SNAP_THRESHOLD_PX / pixelsPerSecRef.current;
@@ -91,6 +110,30 @@ export function useTimelineDrag(
         if (asset?.duration_sec) mediaMaxDuration = asset.duration_sec;
       }
 
+      // Build multi-clip info for 'move' only
+      const currentSelection = selectedClipIdsRef.current;
+      const isMultiMove = dragType === 'move'
+        && currentSelection.size > 1
+        && currentSelection.has(clipId);
+
+      const multiClips: MultiClipInfo[] = [];
+      if (isMultiMove) {
+        for (const id of currentSelection) {
+          if (id === clipId) continue;
+          const f = findClipById(tl, id);
+          if (!f) continue;
+          const t = tl.tracks.find((tr) => tr.id === f.trackId);
+          if (!t) continue;
+          multiClips.push({
+            clipId: id,
+            trackId: f.trackId,
+            originalStart: f.clip.timeline_start_sec,
+            duration: f.clip.duration_sec,
+            trackClips: t.clips,
+          });
+        }
+      }
+
       dragRef.current = {
         clipId,
         trackId,
@@ -100,6 +143,8 @@ export function useTimelineDrag(
         pixelsPerSec: pixelsPerSecRef.current,
         trackClips: track.clips,
         mediaMaxDuration,
+        isMultiMove,
+        multiClips,
       };
 
       visualRef.current = {
@@ -108,6 +153,7 @@ export function useTimelineDrag(
         offsetPx: 0,
         widthPx: null,
         leftPx: null,
+        isMultiMove,
       };
       setVisualState(visualRef.current);
 
@@ -146,21 +192,40 @@ export function useTimelineDrag(
       }
 
       newStart = Math.max(0, newStart);
+      const effectiveDelta = newStart - d.originalClip.timeline_start_sec;
 
-      if (wouldOverlap(d.clipId, newStart, d.originalClip.duration_sec, d.trackClips)) {
+      // Boundary check: no clip below 0
+      if (d.isMultiMove) {
+        for (const mc of d.multiClips) {
+          if (mc.originalStart + effectiveDelta < 0) return;
+        }
+      }
+
+      // Overlap check — exclude all selected clips from collision
+      const excludeIds = d.isMultiMove
+        ? new Set([d.clipId, ...d.multiClips.map((mc) => mc.clipId)])
+        : undefined;
+
+      if (wouldOverlap(d.clipId, newStart, d.originalClip.duration_sec, d.trackClips, excludeIds)) {
         return;
       }
 
-      const offsetPx = secToPx(
-        newStart - d.originalClip.timeline_start_sec,
-        d.pixelsPerSec,
-      );
+      if (d.isMultiMove) {
+        for (const mc of d.multiClips) {
+          if (wouldOverlap(mc.clipId, mc.originalStart + effectiveDelta, mc.duration, mc.trackClips, excludeIds)) {
+            return;
+          }
+        }
+      }
+
+      const offsetPx = secToPx(effectiveDelta, d.pixelsPerSec);
       visualRef.current = {
         clipId: d.clipId,
         dragType: 'move',
         offsetPx,
         widthPx: null,
         leftPx: null,
+        isMultiMove: d.isMultiMove,
       };
       setVisualState(visualRef.current);
       onSeekRef.current(newStart);
@@ -199,6 +264,7 @@ export function useTimelineDrag(
         offsetPx: 0,
         widthPx,
         leftPx,
+        isMultiMove: false,
       };
       setVisualState(visualRef.current);
       onSeekRef.current(newTimelineStart);
@@ -237,6 +303,7 @@ export function useTimelineDrag(
         offsetPx: 0,
         widthPx,
         leftPx: null,
+        isMultiMove: false,
       };
       setVisualState(visualRef.current);
       onSeekRef.current(orig.timeline_start_sec + finalDuration);
@@ -261,6 +328,15 @@ export function useTimelineDrag(
         newTimeline = updateClipInTimeline(tl, d.clipId, {
           timeline_start_sec: newStart,
         });
+        // Apply same delta to secondary clips
+        if (d.isMultiMove) {
+          const effectiveDelta = newStart - orig.timeline_start_sec;
+          for (const mc of d.multiClips) {
+            newTimeline = updateClipInTimeline(newTimeline, mc.clipId, {
+              timeline_start_sec: Math.max(0, mc.originalStart + effectiveDelta),
+            });
+          }
+        }
       } else if (d.dragType === 'trim-left' && vs.leftPx !== null && vs.widthPx !== null) {
         const newStart = pxToSec(vs.leftPx - HEADER_WIDTH, d.pixelsPerSec);
         const newDuration = pxToSec(vs.widthPx, d.pixelsPerSec);

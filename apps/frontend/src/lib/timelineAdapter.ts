@@ -20,6 +20,10 @@ export function resolveMediaUrl(mediaId: string, timeline: TimelineProject): str
   return `${API_BASE}/media/file?path=${encodeURIComponent(asset.path)}`;
 }
 
+export function getMediaType(mediaId: string, timeline: TimelineProject): string | undefined {
+  return timeline.media_pool?.find((m) => m.id === mediaId)?.type;
+}
+
 /**
  * Calculate total duration in frames from all clips across all tracks.
  */

@@ -1,9 +1,10 @@
 """ASR tool: transcribe_audio using faster-whisper.
-Transcription results are persisted to <filename>.analysis.md."""
+Transcription results are persisted to <filename>_analysis.md."""
 
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from pathlib import Path
 
@@ -17,7 +18,7 @@ logger = logging.getLogger(__name__)
     name="transcribe_audio",
     description="Transcribe speech in a video/audio file using Whisper ASR. "
     "Returns word-level timestamps and full transcript. "
-    "Results are saved to <filename>.analysis.md.",
+    "Results are saved to <filename>_analysis.md.",
     parameters={
         "type": "OBJECT",
         "properties": {
@@ -43,7 +44,13 @@ async def transcribe_audio(args: dict, state) -> dict:
             None, _transcribe_sync, str(file_path), language
         )
 
-        # Persist to .analysis.md
+        # LLM post-correction: fix mispronunciation errors
+        try:
+            await _correct_transcription(result)
+        except Exception:
+            logger.warning("LLM transcription correction failed, using original", exc_info=True)
+
+        # Persist to _analysis.md
         md_path = append_section(file_path, "Transcription", _format_transcription_md(result))
         result["analysis_file"] = str(md_path)
         logger.info(f"Transcription saved to {md_path}")
@@ -105,6 +112,86 @@ def _transcribe_sync(file_path: str, language: str | None) -> dict:
     }
 
 
+_CORRECTION_SYSTEM_PROMPT = """\
+You are a transcription correction expert. You will receive speech-to-text \
+transcription segments that may contain errors caused by mispronunciation, \
+homophones, or similar-sounding words.
+
+Rules:
+- Fix obvious speech-recognition errors (wrong characters/words caused by \
+similar pronunciation) based on context.
+- Do NOT change the speaker's original meaning, word order, or style.
+- If a segment has no errors, return it unchanged.
+- Return ONLY a JSON array of corrected strings, one per input segment, \
+in the same order. No explanation, no markdown fences."""
+
+
+async def _correct_transcription(result: dict) -> None:
+    """Call LLM to fix mispronunciation errors in transcription segments.
+
+    Modifies *result* in-place. On any failure, logs a warning and leaves
+    the original transcription untouched.
+    """
+    segments = result.get("segments", [])
+    if not segments:
+        return
+
+    from app.services.llm import get_provider
+
+    provider = get_provider()
+
+    # Build user message: numbered segment texts
+    numbered = "\n".join(f"{i}: {seg['text']}" for i, seg in enumerate(segments))
+    user_msg = (
+        f"Language: {result.get('language', 'unknown')}\n"
+        f"Transcription segments:\n{numbered}"
+    )
+
+    try:
+        resp = await provider.generate(
+            messages=[{"role": "user", "content": user_msg}],
+            system_prompt=_CORRECTION_SYSTEM_PROMPT,
+            tools=[],
+            temperature=0.3,
+        )
+    except Exception:
+        logger.warning("LLM correction call failed, using original transcription", exc_info=True)
+        return
+
+    if not resp.text:
+        logger.warning("LLM returned empty response for transcription correction")
+        return
+
+    # Parse JSON array from response (strip possible markdown fences)
+    raw = resp.text.strip()
+    if raw.startswith("```"):
+        raw = raw.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+
+    try:
+        corrected: list[str] = json.loads(raw)
+    except json.JSONDecodeError:
+        logger.warning("Failed to parse LLM correction response: %s", raw[:200])
+        return
+
+    if not isinstance(corrected, list) or len(corrected) != len(segments):
+        logger.warning(
+            "LLM correction count mismatch: got %s, expected %d",
+            len(corrected) if isinstance(corrected, list) else type(corrected).__name__,
+            len(segments),
+        )
+        return
+
+    # Apply corrections
+    corrected_parts = []
+    for seg, new_text in zip(segments, corrected):
+        if isinstance(new_text, str) and new_text.strip():
+            seg["text"] = new_text.strip()
+        corrected_parts.append(seg["text"])
+
+    result["full_text"] = " ".join(corrected_parts)
+    logger.info("LLM transcription correction applied to %d segments", len(segments))
+
+
 def _format_transcription_md(result: dict) -> str:
     """Format transcription result as Markdown for the analysis file."""
     lines = [
@@ -118,7 +205,7 @@ def _format_transcription_md(result: dict) -> str:
         "",
         "### Segments",
         "",
-        "| Start | End | Text |",
+        "| Start Time | End Time | Text |",
         "|-------|-----|------|",
     ]
     for seg in result["segments"]:

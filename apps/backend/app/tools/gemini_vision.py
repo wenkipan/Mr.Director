@@ -1,7 +1,7 @@
 """Gemini vision tools: analyze_video, analyze_image.
 Uses Gemini Files API for video upload and multimodal analysis.
 Falls back to inline bytes when a custom base_url is configured (proxy mode).
-Analysis results are persisted to <filename>.analysis.md."""
+Analysis results are persisted to <filename>_analysis.md."""
 
 from __future__ import annotations
 
@@ -65,7 +65,7 @@ FOCUS_PROMPTS = {
     name="analyze_video",
     description="Analyze a video file using Gemini vision. Returns scene descriptions, "
     "key moments, visual content, pacing, and other observations. "
-    "Results are saved to <filename>.analysis.md.",
+    "Results are saved to <filename>_analysis.md.",
     parameters={
         "type": "OBJECT",
         "properties": {
@@ -108,7 +108,7 @@ async def analyze_video(args: dict, state) -> dict:
 
         analysis_text = response.text
 
-        # Persist to .analysis.md
+        # Persist to _analysis.md
         section = f"Video Analysis ({focus})"
         md_path = append_section(file_path, section, analysis_text)
         logger.info(f"Analysis saved to {md_path}")
@@ -131,7 +131,7 @@ async def analyze_video(args: dict, state) -> dict:
 @registry.register(
     name="analyze_image",
     description="Analyze an image file using Gemini vision. Returns description of visual content. "
-    "Results are saved to <filename>.analysis.md.",
+    "Results are saved to <filename>_analysis.md.",
     parameters={
         "type": "OBJECT",
         "properties": {
@@ -172,7 +172,7 @@ async def analyze_image(args: dict, state) -> dict:
 
         analysis_text = response.text
 
-        # Persist to .analysis.md
+        # Persist to _analysis.md
         md_path = append_section(file_path, "Image Analysis", analysis_text)
         logger.info(f"Analysis saved to {md_path}")
 

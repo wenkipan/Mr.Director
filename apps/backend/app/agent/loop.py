@@ -21,11 +21,12 @@ import app.tools.user_interaction  # noqa: F401
 import app.tools.gemini_vision  # noqa: F401
 import app.tools.asr  # noqa: F401
 import app.tools.subtitles  # noqa: F401
+import app.tools.time_mapping  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
 MAX_ITERATIONS = 20
-TIMELINE_MODIFYING_TOOLS = {"create_timeline", "modify_timeline", "generate_subtitles"}
+TIMELINE_MODIFYING_TOOLS = {"create_timeline", "edit_clips", "split_timeline", "manage_timeline", "generate_subtitles"}
 # Tools that require user interaction — agent loop must stop and return the message
 USER_FACING_TOOLS = {"ask_user", "present_plan"}
 
@@ -36,6 +37,15 @@ class ReActAgent:
 
     async def run(self, user_message: str, state: AgentState) -> str:
         """Run the agent loop. Returns the agent's final text response."""
+
+        state.agent_active = True
+        try:
+            return await self._run_loop(user_message, state)
+        finally:
+            state.agent_active = False
+
+    async def _run_loop(self, user_message: str, state: AgentState) -> str:
+        """Internal agent loop implementation."""
 
         # Add user message to conversation history (unified format)
         state.conversation_history.append({
@@ -61,13 +71,19 @@ class ReActAgent:
                 await ws_manager.broadcast_agent_progress(state.project_id, event="agent_done")
                 return f"Sorry, I encountered an error communicating with the AI model: {str(e)}"
 
+            # Broadcast reasoning content if present
+            if response.reasoning_content:
+                await ws_manager.broadcast_agent_reasoning(
+                    state.project_id, response.reasoning_content
+                )
+
             # If no tool calls, the agent is done — return text
             if not response.tool_calls:
                 final_text = response.text or "Sorry, I received an empty response. Please try again."
-                state.conversation_history.append({
-                    "role": "assistant",
-                    "content": final_text,
-                })
+                assistant_msg: dict = {"role": "assistant", "content": final_text}
+                if response.reasoning_content:
+                    assistant_msg["reasoning_content"] = response.reasoning_content
+                state.conversation_history.append(assistant_msg)
                 await ws_manager.broadcast_agent_progress(state.project_id, event="agent_done")
                 return final_text
 
@@ -76,10 +92,13 @@ class ReActAgent:
             stop_text = ""
 
             # Record all tool calls in one assistant message
-            state.conversation_history.append({
+            assistant_msg = {
                 "role": "assistant",
                 "tool_calls": [{"name": tc.name, "args": tc.args} for tc in response.tool_calls],
-            })
+            }
+            if response.reasoning_content:
+                assistant_msg["reasoning_content"] = response.reasoning_content
+            state.conversation_history.append(assistant_msg)
 
             for tc in response.tool_calls:
                 logger.info(f"Tool call: {tc.name}({json.dumps(tc.args, ensure_ascii=False)[:200]})")
@@ -119,9 +138,11 @@ class ReActAgent:
 
                 # If timeline was modified, push update via WebSocket
                 if tc.name in TIMELINE_MODIFYING_TOOLS and state.current_timeline:
+                    version = state.bump_version()
                     await ws_manager.broadcast_timeline(
                         state.project_id,
                         state.current_timeline.model_dump(),
+                        version=version,
                     )
                     _save_timeline(state)
 
@@ -133,10 +154,10 @@ class ReActAgent:
             # If a user-facing tool was called, return its message to the user
             if should_stop:
                 final_text = response.text or stop_text
-                state.conversation_history.append({
-                    "role": "assistant",
-                    "content": final_text,
-                })
+                stop_msg: dict = {"role": "assistant", "content": final_text}
+                if response.reasoning_content:
+                    stop_msg["reasoning_content"] = response.reasoning_content
+                state.conversation_history.append(stop_msg)
                 await ws_manager.broadcast_agent_progress(state.project_id, event="agent_done")
                 return final_text
 

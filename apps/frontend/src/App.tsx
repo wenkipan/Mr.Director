@@ -18,7 +18,7 @@ export default function App() {
       createProject('Untitled')
         .then((res) => {
           setProjectId(res.project_id);
-          setTimeline(res.timeline);
+          setTimeline(res.timeline, 0);
         })
         .catch((e) => console.error('Failed to create project:', e));
       return;
@@ -27,7 +27,7 @@ export default function App() {
     // Saved project exists — try to load it
     getProject(projectId)
       .then((res) => {
-        setTimeline(res.timeline);
+        setTimeline(res.timeline, res.version ?? 0);
       })
       .catch(() => {
         // Project no longer exists on backend — create a new one
@@ -47,21 +47,21 @@ export default function App() {
             <Panel defaultSize={50} minSize={20}>
               <MediaPanel />
             </Panel>
-            <PanelResizeHandle className="h-1 bg-zinc-800 hover:bg-blue-500 transition-colors" />
+            <PanelResizeHandle className="h-1 bg-zinc-950 hover:bg-zinc-700 transition-colors" />
             <Panel defaultSize={50} minSize={20}>
               <ClipPropertiesEditor />
             </Panel>
           </PanelGroup>
         </Panel>
 
-        <PanelResizeHandle className="w-1 bg-zinc-800 hover:bg-blue-500 transition-colors" />
+        <PanelResizeHandle className="w-1 bg-zinc-950 hover:bg-zinc-700 transition-colors" />
 
         {/* Center: Preview + Timeline */}
         <Panel defaultSize={55} minSize={40}>
           <CenterPanel />
         </Panel>
 
-        <PanelResizeHandle className="w-1 bg-zinc-800 hover:bg-blue-500 transition-colors" />
+        <PanelResizeHandle className="w-1 bg-zinc-950 hover:bg-zinc-700 transition-colors" />
 
         {/* Right: Chat */}
         <Panel defaultSize={25} minSize={15} maxSize={35}>

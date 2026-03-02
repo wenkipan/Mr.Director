@@ -140,3 +140,5 @@ SPEC.md 也记录了一些，不想再重复写了
 在深入后才发现，timeline和诸如ACES才是剪辑得以存在的道理，timeline-free简直是倒反天罡
 
 所以在调研chatcut和nemovideo，以及开源的一些剪辑工具后，最后决定使用remotion+webgpu来做前端的timeline展示
+
+查看当前的timeline json文件，以当前的字幕轨道上存在的字幕片段为标准，保留有对应字幕的时间片段，删除没有对应字幕的片段

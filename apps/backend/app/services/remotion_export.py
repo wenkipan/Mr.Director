@@ -7,8 +7,10 @@ import tempfile
 from pathlib import Path
 from urllib.parse import quote
 
+from app.config import settings
 from app.models.timeline import TimelineProject
 from app.services.export_jobs import update_job
+from app.services.gpu_check import check_gpu
 from app.services.ws_manager import ws_manager
 
 logger = logging.getLogger(__name__)
@@ -87,7 +89,7 @@ async def run_remotion_export(
     output_path = str(Path(output_path).resolve())
 
     update_job(export_id, status="rendering", progress=0.0)
-    await ws_manager.broadcast_export_progress(export_id, 0.0, "rendering")
+    await ws_manager.broadcast_export_progress(project_id, export_id, 0.0, "rendering")
 
     props_file = None
     try:
@@ -102,6 +104,13 @@ async def run_remotion_export(
         json.dump(props, props_file, ensure_ascii=False)
         props_file.close()
 
+        # Determine GL backend
+        if settings.export_gl in ("auto", ""):
+            gpu = check_gpu()
+            gl_flag = gpu.gl_flag
+        else:
+            gl_flag = settings.export_gl
+
         # Build the remotion render command
         cmd = [
             "npx", "remotion", "render",
@@ -110,6 +119,8 @@ async def run_remotion_export(
             output_path,
             "--props", props_file.name,
             "--codec", "h264",
+            "--color-space", "bt709",
+            "--gl", gl_flag,
             "--log", "verbose",
         ]
 
@@ -140,7 +151,7 @@ async def run_remotion_export(
                 progress = rendered / total if total > 0 else 0.0
                 update_job(export_id, progress=progress)
                 await ws_manager.broadcast_export_progress(
-                    export_id, progress, "rendering"
+                    project_id, export_id, progress, "rendering"
                 )
                 continue
 
@@ -150,7 +161,7 @@ async def run_remotion_export(
                 progress = int(m2.group(1)) / 100.0
                 update_job(export_id, progress=progress)
                 await ws_manager.broadcast_export_progress(
-                    export_id, progress, "rendering"
+                    project_id, export_id, progress, "rendering"
                 )
 
         # Also consume stdout
@@ -160,25 +171,25 @@ async def run_remotion_export(
             error_msg = f"Remotion render failed with exit code {proc.returncode}"
             logger.error(error_msg)
             update_job(export_id, status="error", error=error_msg)
-            await ws_manager.broadcast_export_progress(export_id, 0.0, "error")
+            await ws_manager.broadcast_export_progress(project_id, export_id, 0.0, "error")
             return
 
         if not Path(output_path).exists():
             error_msg = "Remotion render completed but output file not found"
             logger.error(error_msg)
             update_job(export_id, status="error", error=error_msg)
-            await ws_manager.broadcast_export_progress(export_id, 0.0, "error")
+            await ws_manager.broadcast_export_progress(project_id, export_id, 0.0, "error")
             return
 
         update_job(export_id, status="completed", progress=1.0)
-        await ws_manager.broadcast_export_progress(export_id, 1.0, "completed")
+        await ws_manager.broadcast_export_progress(project_id, export_id, 1.0, "completed")
         logger.info(f"Remotion export completed: {output_path}")
 
     except Exception as e:
         error_msg = f"Remotion export error: {e}"
         logger.exception(error_msg)
         update_job(export_id, status="error", error=error_msg)
-        await ws_manager.broadcast_export_progress(export_id, 0.0, "error")
+        await ws_manager.broadcast_export_progress(project_id, export_id, 0.0, "error")
     finally:
         if props_file and os.path.exists(props_file.name):
             try:

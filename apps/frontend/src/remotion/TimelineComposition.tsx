@@ -1,6 +1,6 @@
-import { AbsoluteFill, Sequence, Video, Audio, useVideoConfig, useCurrentFrame } from 'remotion';
+import { AbsoluteFill, Sequence, Video, OffthreadVideo, Audio, Img, useVideoConfig, useCurrentFrame } from 'remotion';
 import type { TimelineProject, Clip as ClipType, VideoStyle, SubtitleStyle } from '@mrdv2/shared';
-import { resolveMediaUrl } from '../lib/timelineAdapter';
+import { resolveMediaUrl, getMediaType } from '../lib/timelineAdapter';
 import { parseSrt, type SrtEntry } from '../lib/srtParser';
 import { useEffect, useState } from 'react';
 import { EditableText } from './EditableText';
@@ -71,12 +71,14 @@ const SrtSubtitleClip: React.FC<{
   );
 };
 
-/** Renders a single video clip with spatial positioning, crop, and opacity. */
+/** Renders a single video/image clip with spatial positioning, crop, and opacity. */
 const VideoClipRenderer: React.FC<{
   clip: ClipType;
   mediaUrl: string;
   fps: number;
-}> = ({ clip, mediaUrl, fps }) => {
+  isSSR?: boolean;
+  isImage?: boolean;
+}> = ({ clip, mediaUrl, fps, isSSR, isImage }) => {
   const vs = clip.video_style;
   const posX = vs?.position_x ?? 0.5;
   const posY = vs?.position_y ?? 0.5;
@@ -132,9 +134,19 @@ const VideoClipRenderer: React.FC<{
         objectFit: fit as React.CSSProperties['objectFit'],
       };
 
+  if (isImage) {
+    return (
+      <div style={containerStyle}>
+        <Img src={mediaUrl} style={videoStyle} />
+      </div>
+    );
+  }
+
+  const VideoComponent = isSSR ? OffthreadVideo : Video;
+
   return (
     <div style={containerStyle}>
-      <Video
+      <VideoComponent
         src={mediaUrl}
         startFrom={Math.round((clip.source_in_sec ?? 0) * fps)}
         playbackRate={clip.speed ?? 1}
@@ -151,6 +163,7 @@ interface TimelineCompositionProps {
 
 export const TimelineComposition: React.FC<TimelineCompositionProps> = ({ timeline }) => {
   const { fps } = useVideoConfig();
+  const isSSR = !!(timeline as any)._ssr;
 
   const videoTracks = timeline.tracks.filter((t) => t.type === 'video');
   const audioTracks = timeline.tracks.filter((t) => t.type === 'audio');
@@ -164,12 +177,16 @@ export const TimelineComposition: React.FC<TimelineCompositionProps> = ({ timeli
           ? null
           : track.clips.map((clip) => {
               const startFrame = Math.round(clip.timeline_start_sec * fps);
-              const durationFrames = Math.round(clip.duration_sec * fps);
+              const endFrame = Math.round((clip.timeline_start_sec + clip.duration_sec) * fps);
+              const durationFrames = endFrame - startFrame;
               const mediaUrl = clip.media_id
                 ? resolveMediaUrl(clip.media_id, timeline)
                 : '';
+              const mediaType = clip.media_id
+                ? getMediaType(clip.media_id, timeline)
+                : undefined;
 
-              if (!mediaUrl) return null;
+              if (!mediaUrl || durationFrames < 1) return null;
 
               return (
                 <Sequence
@@ -178,7 +195,7 @@ export const TimelineComposition: React.FC<TimelineCompositionProps> = ({ timeli
                   durationInFrames={durationFrames}
                 >
                   <AbsoluteFill>
-                    <VideoClipRenderer clip={clip} mediaUrl={mediaUrl} fps={fps} />
+                    <VideoClipRenderer clip={clip} mediaUrl={mediaUrl} fps={fps} isSSR={isSSR} isImage={mediaType === 'image'} />
                   </AbsoluteFill>
                 </Sequence>
               );
@@ -191,12 +208,13 @@ export const TimelineComposition: React.FC<TimelineCompositionProps> = ({ timeli
           ? null
           : track.clips.map((clip) => {
               const startFrame = Math.round(clip.timeline_start_sec * fps);
-              const durationFrames = Math.round(clip.duration_sec * fps);
+              const endFrame = Math.round((clip.timeline_start_sec + clip.duration_sec) * fps);
+              const durationFrames = endFrame - startFrame;
               const mediaUrl = clip.media_id
                 ? resolveMediaUrl(clip.media_id, timeline)
                 : '';
 
-              if (!mediaUrl) return null;
+              if (!mediaUrl || durationFrames < 1) return null;
 
               return (
                 <Sequence
@@ -220,7 +238,10 @@ export const TimelineComposition: React.FC<TimelineCompositionProps> = ({ timeli
           ? null
           : track.clips.map((clip) => {
               const startFrame = Math.round(clip.timeline_start_sec * fps);
-              const durationFrames = Math.round(clip.duration_sec * fps);
+              const endFrame = Math.round((clip.timeline_start_sec + clip.duration_sec) * fps);
+              const durationFrames = endFrame - startFrame;
+
+              if (durationFrames < 1) return null;
 
               // SRT file-backed subtitle: has media_id but no inline text
               if (!clip.subtitle_text && clip.media_id) {

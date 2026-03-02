@@ -26,6 +26,7 @@ export interface ToolCallProgress {
 export interface AgentProgress {
   isActive: boolean;
   toolCalls: ToolCallProgress[];
+  reasoning: string | null;
 }
 
 const MAX_UNDO = 50;
@@ -33,7 +34,9 @@ const MAX_UNDO = 50;
 interface AppStore {
   // Timeline state
   timeline: TimelineProject | null;
-  setTimeline: (t: TimelineProject | null) => void;
+  timelineVersion: number;
+  setTimeline: (t: TimelineProject | null, version?: number) => void;
+  setTimelineFromServer: (t: TimelineProject, version: number) => void;
 
   // Timeline editing (with undo support)
   setTimelineSilent: (t: TimelineProject) => void;
@@ -72,6 +75,7 @@ interface AppStore {
   agentProgress: AgentProgress;
   onToolStart: (toolName: string, toolArgs: Record<string, string>, iteration: number) => void;
   onToolEnd: (toolName: string, resultSummary: string, isError: boolean) => void;
+  onAgentReasoning: (reasoning: string) => void;
   onAgentDone: () => void;
 
   // Project
@@ -84,7 +88,38 @@ const API_BASE = '/api';
 export const useAppStore = create<AppStore>((set, get) => ({
   // Timeline
   timeline: null,
-  setTimeline: (t) => set({ timeline: t, undoStack: [], redoStack: [] }),
+  timelineVersion: 0,
+  setTimeline: (t, version) => set({
+    timeline: t,
+    timelineVersion: version ?? 0,
+    undoStack: [],
+    redoStack: [],
+    timelineDirty: false,
+  }),
+
+  setTimelineFromServer: (t, version) => {
+    const { timelineVersion, agentProgress } = get();
+    // Ignore stale updates (echo-backs with version <= current)
+    if (version <= timelineVersion) return;
+
+    if (agentProgress.isActive) {
+      // Agent is making changes: replace timeline, clear undo/redo
+      set({
+        timeline: t,
+        timelineVersion: version,
+        undoStack: [],
+        redoStack: [],
+        timelineDirty: false,
+      });
+    } else {
+      // Echo-back of our own save — update version, preserve undo/redo
+      set({
+        timeline: t,
+        timelineVersion: version,
+        timelineDirty: false,
+      });
+    }
+  },
 
   // Timeline editing with undo
   undoStack: [],
@@ -157,11 +192,12 @@ export const useAppStore = create<AppStore>((set, get) => ({
   setWsConnected: (c) => set({ wsConnected: c }),
 
   // Agent progress
-  agentProgress: { isActive: false, toolCalls: [] },
+  agentProgress: { isActive: false, toolCalls: [], reasoning: null },
 
   onToolStart: (toolName, toolArgs, iteration) =>
     set((s) => ({
       agentProgress: {
+        ...s.agentProgress,
         isActive: true,
         toolCalls: [
           ...s.agentProgress.toolCalls,
@@ -182,8 +218,13 @@ export const useAppStore = create<AppStore>((set, get) => ({
       },
     })),
 
+  onAgentReasoning: (reasoning) =>
+    set((s) => ({
+      agentProgress: { ...s.agentProgress, reasoning },
+    })),
+
   onAgentDone: () =>
-    set({ agentProgress: { isActive: false, toolCalls: [] } }),
+    set({ agentProgress: { isActive: false, toolCalls: [], reasoning: null } }),
 
   // Project
   projectId: localStorage.getItem('mrdv2_projectId'),

@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useAppStore } from '../stores/appStore';
 
 export function useWebSocket(projectId: string | null) {
-  const { setTimeline, addMessage, setWsConnected, onToolStart, onToolEnd, onAgentDone } = useAppStore();
+  const { setTimelineFromServer, addMessage, setWsConnected, onToolStart, onToolEnd, onAgentReasoning, onAgentDone } = useAppStore();
   const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
@@ -22,7 +22,7 @@ export function useWebSocket(projectId: string | null) {
         const msg = JSON.parse(event.data);
         switch (msg.type) {
           case 'timeline_update':
-            setTimeline(msg.data);
+            setTimelineFromServer(msg.data, msg.version ?? 0);
             break;
           case 'agent_message':
             // Legacy — no longer used (REST response is canonical)
@@ -35,6 +35,11 @@ export function useWebSocket(projectId: string | null) {
             document.dispatchEvent(
               new CustomEvent('export:progress', { detail: { export_id, progress, status } })
             );
+            break;
+          }
+          case 'agent_reasoning': {
+            const { reasoning } = msg.data;
+            onAgentReasoning(reasoning);
             break;
           }
           case 'agent_progress': {
@@ -66,7 +71,7 @@ export function useWebSocket(projectId: string | null) {
       ws.close();
       wsRef.current = null;
     };
-  }, [projectId, setTimeline, addMessage, setWsConnected, onToolStart, onToolEnd, onAgentDone]);
+  }, [projectId, setTimelineFromServer, addMessage, setWsConnected, onToolStart, onToolEnd, onAgentReasoning, onAgentDone]);
 
   return wsRef;
 }

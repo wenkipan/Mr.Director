@@ -1,4 +1,4 @@
-"""Read/write helpers for <media>.analysis.md files."""
+"""Read/write helpers for <media>_analysis.md files."""
 
 from __future__ import annotations
 
@@ -7,8 +7,8 @@ from pathlib import Path
 
 
 def get_analysis_path(media_path: Path) -> Path:
-    """Return the .analysis.md path for a given media file."""
-    return media_path.parent / f"{media_path.name}.analysis.md"
+    """Return the _analysis.md path for a given media file."""
+    return media_path.parent / f"{media_path.stem}_analysis.md"
 
 
 def append_section(media_path: Path, heading: str, content: str) -> Path:

@@ -23,13 +23,21 @@ export async function getProject(projectId: string) {
   return res.json();
 }
 
-export async function updateTimeline(projectId: string, timeline: any): Promise<void> {
+export async function updateTimeline(
+  projectId: string,
+  timeline: any,
+): Promise<{ project_id: string; version: number }> {
   const res = await fetch(`${API_BASE}/projects/${projectId}/timeline`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(timeline),
   });
-  if (!res.ok) throw new Error(`Failed to save timeline: ${res.statusText}`);
+  if (!res.ok) {
+    const err = new Error(`Failed to save timeline: ${res.status} ${res.statusText}`);
+    (err as any).status = res.status;
+    throw err;
+  }
+  return res.json();
 }
 
 export async function startExport(projectId: string, format: string = 'mp4') {
@@ -79,6 +87,18 @@ export async function exportInterchange(
       _triggerDownload(srtBlob, `${projectId}_subtitles.srt`);
     }
   }
+}
+
+export interface GpuStatus {
+  gpu_available: boolean;
+  gl_flag: string;
+  reason: string;
+}
+
+export async function getGpuStatus(): Promise<GpuStatus> {
+  const res = await fetch(`${API_BASE}/export/gpu-status`);
+  if (!res.ok) throw new Error(`GPU status check failed: ${res.statusText}`);
+  return res.json();
 }
 
 export async function getExportStatus(exportId: string) {

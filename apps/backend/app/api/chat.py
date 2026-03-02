@@ -22,10 +22,16 @@ logger = logging.getLogger(__name__)
 _agent_states: dict[str, AgentState] = {}
 
 
-def _get_or_create_state(project_id: str) -> AgentState:
+def get_or_create_state(project_id: str) -> AgentState:
+    """Get existing state or create one by loading from disk.
+
+    This is the SOLE entry point for accessing project state.
+    Once loaded, in-memory state is the source of truth.
+    Disk is only read on first access (cold start).
+    """
     if project_id not in _agent_states:
         state = AgentState(project_id=project_id)
-        # Try to load existing timeline from disk
+        # Load from disk only on first access
         path = Path(settings.projects_dir) / f"{project_id}.json"
         if path.exists():
             try:
@@ -34,13 +40,14 @@ def _get_or_create_state(project_id: str) -> AgentState:
             except Exception as e:
                 logger.warning(f"Failed to load timeline for {project_id}: {e}")
         _agent_states[project_id] = state
+
     return _agent_states[project_id]
 
 
 @router.post("/chat")
 async def chat_message(req: ChatRequest) -> ChatResponse:
     """Send a user message to the agent and get a response."""
-    state = _get_or_create_state(req.project_id)
+    state = get_or_create_state(req.project_id)
 
     # If user mentions a directory, remember it as the media dir
     # (simple heuristic — agent can also set this via tools)

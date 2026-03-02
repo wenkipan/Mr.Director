@@ -17,6 +17,7 @@ class ToolCall:
 class LLMResponse:
     text: str | None = None
     tool_calls: list[ToolCall] = field(default_factory=list)
+    reasoning_content: str | None = None
 
 
 class LLMProvider(ABC):

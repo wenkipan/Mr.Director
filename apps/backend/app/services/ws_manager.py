@@ -17,10 +17,11 @@ class WebSocketManager:
         if ws in conns:
             conns.remove(ws)
 
-    async def broadcast_timeline(self, project_id: str, timeline_data: dict):
+    async def broadcast_timeline(self, project_id: str, timeline_data: dict, version: int = 0):
         message = {
             "type": "timeline_update",
             "data": timeline_data,
+            "version": version,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         await self._broadcast(project_id, message)
@@ -37,6 +38,15 @@ class WebSocketManager:
         message = {
             "type": "agent_thinking",
             "data": {"tool": tool_name},
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+        await self._broadcast(project_id, message)
+
+    async def broadcast_agent_reasoning(self, project_id: str, reasoning: str):
+        """Broadcast the model's reasoning/thinking content to connected clients."""
+        message = {
+            "type": "agent_reasoning",
+            "data": {"reasoning": reasoning[:2000]},
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         await self._broadcast(project_id, message)

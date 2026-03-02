@@ -76,9 +76,14 @@ def _to_openai_messages(
                     }
                     for i, tc in enumerate(msg["tool_calls"])
                 ]
+                if msg.get("reasoning_content"):
+                    oai_msg["reasoning_content"] = msg["reasoning_content"]
                 oai_messages.append(oai_msg)
             else:
-                oai_messages.append({"role": "assistant", "content": msg.get("content", "")})
+                oai_msg = {"role": "assistant", "content": msg.get("content", "")}
+                if msg.get("reasoning_content"):
+                    oai_msg["reasoning_content"] = msg["reasoning_content"]
+                oai_messages.append(oai_msg)
 
         elif role == "tool":
             # Find matching tool_call_id from previous assistant message
@@ -128,12 +133,21 @@ def _to_openai_tools(tool_defs: list[dict]) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 class OpenAIProvider(LLMProvider):
-    def __init__(self, api_key: str, model: str, base_url: str | None = None) -> None:
+    _THINKING_PARAMS: dict[str, dict] = {
+        "dashscope": {"enable_thinking": True},
+        "deepseek": {"thinking": {"type": "enabled"}},
+    }
+
+    def __init__(
+        self, api_key: str, model: str, base_url: str | None = None,
+        thinking: str = "off",
+    ) -> None:
         kwargs: dict[str, Any] = {"api_key": api_key}
         if base_url:
             kwargs["base_url"] = base_url
         self.client = AsyncOpenAI(**kwargs)
         self.model = model
+        self.thinking = thinking
 
     async def generate(
         self,
@@ -145,18 +159,27 @@ class OpenAIProvider(LLMProvider):
         oai_messages = _to_openai_messages(messages, system_prompt)
         oai_tools = _to_openai_tools(tools)
 
-        response = await self.client.chat.completions.create(
-            model=self.model,
-            messages=oai_messages,
-            tools=oai_tools if oai_tools else None,
-            temperature=temperature,
-        )
+        tool_names = [t["function"]["name"] for t in oai_tools]
+        logger.info(f"Sending {len(oai_tools)} tools to {self.model}: {tool_names}")
+
+        create_kwargs: dict[str, Any] = {
+            "model": self.model,
+            "messages": oai_messages,
+            "tools": oai_tools if oai_tools else None,
+            "temperature": temperature,
+        }
+        extra_body = self._THINKING_PARAMS.get(self.thinking)
+        if extra_body:
+            create_kwargs["extra_body"] = extra_body
+
+        response = await self.client.chat.completions.create(**create_kwargs)
 
         choice = response.choices[0]
         message = choice.message
 
         # Parse response
         text = message.content
+        reasoning_content = getattr(message, "reasoning_content", None)
         tool_calls: list[ToolCall] = []
 
         if message.tool_calls:
@@ -167,4 +190,4 @@ class OpenAIProvider(LLMProvider):
                     args = {}
                 tool_calls.append(ToolCall(name=tc.function.name, args=args))
 
-        return LLMResponse(text=text, tool_calls=tool_calls)
+        return LLMResponse(text=text, tool_calls=tool_calls, reasoning_content=reasoning_content)

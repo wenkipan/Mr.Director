@@ -47,6 +47,7 @@ export default function TimelineEditor({
   const scrollRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerHeight, setContainerHeight] = useState(250);
+  const [containerWidth, setContainerWidth] = useState(800);
   const [snapGuideTime, setSnapGuideTime] = useState<number | null>(null);
   const [scrollLeft, setScrollLeft] = useState(0);
   const [scrollTop, setScrollTop] = useState(0);
@@ -68,6 +69,7 @@ export default function TimelineEditor({
     onTimelineChange,
     setSnapGuideTime,
     onSeek,
+    selectedClipIds,
   );
 
   // Calculate canvas size
@@ -83,6 +85,7 @@ export default function TimelineEditor({
     if (!el) return;
     const ro = new ResizeObserver(() => {
       setContainerHeight(el.clientHeight);
+      setContainerWidth(el.clientWidth);
     });
     ro.observe(el);
     return () => ro.disconnect();
@@ -267,13 +270,14 @@ export default function TimelineEditor({
 
       const mediaId = generateMediaId(media.path);
       const defaultDuration = 5;
+      const isImageMedia = media.type === 'image';
 
       const clip = {
         id: generateClipId(),
         type: clipType,
         media_id: mediaId,
         source_in_sec: 0,
-        source_out_sec: defaultDuration,
+        ...(isImageMedia ? {} : { source_out_sec: defaultDuration }),
         timeline_start_sec: Math.max(0, target.timeSec),
         duration_sec: defaultDuration,
         speed: 1,
@@ -360,6 +364,8 @@ export default function TimelineEditor({
           canvasWidth={canvasWidth}
           height={containerHeight}
           scrollTop={scrollTop}
+          scrollLeft={scrollLeft}
+          viewportWidth={containerWidth}
         />
 
         <TimelineTrackHeaders
@@ -383,6 +389,7 @@ export default function TimelineEditor({
                   offsetPx: dragVisualState.offsetPx,
                   widthPx: dragVisualState.widthPx,
                   leftPx: dragVisualState.leftPx,
+                  isMultiMove: dragVisualState.isMultiMove,
                 }
               : null
           }

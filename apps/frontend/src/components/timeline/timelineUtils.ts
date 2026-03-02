@@ -17,10 +17,12 @@ export function wouldOverlap(
   newStart: number,
   newDuration: number,
   trackClips: Clip[],
+  excludeIds?: Set<string>,
 ): boolean {
   const newEnd = newStart + newDuration;
   for (const c of trackClips) {
     if (c.id === clipId) continue;
+    if (excludeIds?.has(c.id)) continue;
     const cEnd = c.timeline_start_sec + c.duration_sec;
     if (newStart < cEnd && newEnd > c.timeline_start_sec) {
       return true;
@@ -32,12 +34,15 @@ export function wouldOverlap(
 /** Collect all clip edge times across all tracks (for snapping) */
 export function collectClipEdges(
   timeline: TimelineProject,
-  excludeClipId?: string,
+  excludeClipId?: string | Set<string>,
 ): number[] {
   const edges: number[] = [];
+  const excludeSet = excludeClipId instanceof Set
+    ? excludeClipId
+    : excludeClipId ? new Set([excludeClipId]) : undefined;
   for (const track of timeline.tracks) {
     for (const clip of track.clips) {
-      if (clip.id === excludeClipId) continue;
+      if (excludeSet?.has(clip.id)) continue;
       edges.push(clip.timeline_start_sec);
       edges.push(clip.timeline_start_sec + clip.duration_sec);
     }

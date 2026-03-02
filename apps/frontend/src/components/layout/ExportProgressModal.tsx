@@ -3,6 +3,7 @@ interface ExportProgressModalProps {
   progress: number;
   status: string;
   error: string | null;
+  warning?: string | null;
   onClose: () => void;
 }
 
@@ -11,6 +12,7 @@ export default function ExportProgressModal({
   progress,
   status,
   error,
+  warning,
   onClose,
 }: ExportProgressModalProps) {
   const pct = Math.round(progress * 100);
@@ -43,6 +45,13 @@ export default function ExportProgressModal({
             style={{ width: `${pct}%` }}
           />
         </div>
+      )}
+
+      {/* GPU warning */}
+      {warning && status !== 'error' && status !== 'completed' && (
+        <p className="text-xs text-amber-400 mt-1.5 line-clamp-2" title={warning}>
+          {warning}
+        </p>
       )}
 
       <div className="mt-2 flex justify-between items-center">

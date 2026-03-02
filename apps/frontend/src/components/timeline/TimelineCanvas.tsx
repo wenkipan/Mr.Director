@@ -4,7 +4,6 @@ import {
   TRACK_HEIGHT,
   HEADER_WIDTH,
   RULER_HEIGHT,
-  TRACK_COLORS,
 } from './timelineConstants';
 
 interface TimelineCanvasProps {
@@ -16,6 +15,8 @@ interface TimelineCanvasProps {
   canvasWidth: number;
   height: number;
   scrollTop: number;
+  scrollLeft: number;
+  viewportWidth: number;
 }
 
 export default function TimelineCanvas({
@@ -27,6 +28,8 @@ export default function TimelineCanvas({
   canvasWidth,
   height,
   scrollTop,
+  scrollLeft,
+  viewportWidth,
 }: TimelineCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -36,28 +39,38 @@ export default function TimelineCanvas({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    // Size canvas to viewport only (not full content width) to stay within
+    // browser canvas size limits. Firefox caps at ~16384px per dimension.
     const dpr = window.devicePixelRatio || 1;
-    canvas.width = canvasWidth * dpr;
+    canvas.width = viewportWidth * dpr;
     canvas.height = height * dpr;
-    canvas.style.width = `${canvasWidth}px`;
+    canvas.style.width = `${viewportWidth}px`;
     canvas.style.height = `${height}px`;
     ctx.scale(dpr, dpr);
 
+    // Translate so all drawing uses content-space coordinates.
+    // The canvas element is positioned at scrollLeft, so translating by
+    // -scrollLeft maps content coords into the viewport-sized canvas.
+    ctx.translate(-scrollLeft, 0);
+
     // Background
     ctx.fillStyle = '#18181b';
-    ctx.fillRect(0, 0, canvasWidth, height);
+    ctx.fillRect(scrollLeft, 0, viewportWidth, height);
 
     // Ruler background
     ctx.fillStyle = '#27272a';
-    ctx.fillRect(HEADER_WIDTH, 0, canvasWidth - HEADER_WIDTH, RULER_HEIGHT);
+    ctx.fillRect(Math.max(HEADER_WIDTH, scrollLeft), 0, viewportWidth, RULER_HEIGHT);
 
-    // Ruler ticks and labels
+    // Ruler ticks and labels — only draw visible ones
     ctx.strokeStyle = '#3f3f46';
     ctx.lineWidth = 1;
     ctx.fillStyle = '#a1a1aa';
     ctx.font = '10px monospace';
 
-    for (let t = 0; t <= totalDuration; t++) {
+    const visibleStart = Math.max(0, Math.floor((scrollLeft - HEADER_WIDTH) / pixelsPerSec));
+    const visibleEnd = Math.min(totalDuration, Math.ceil((scrollLeft + viewportWidth - HEADER_WIDTH) / pixelsPerSec));
+
+    for (let t = visibleStart; t <= visibleEnd; t++) {
       const x = HEADER_WIDTH + t * pixelsPerSec;
 
       ctx.beginPath();
@@ -82,7 +95,7 @@ export default function TimelineCanvas({
     // Clip region for track area (below ruler) to prevent tracks from drawing over ruler
     ctx.save();
     ctx.beginPath();
-    ctx.rect(0, RULER_HEIGHT, canvasWidth, height - RULER_HEIGHT);
+    ctx.rect(scrollLeft, RULER_HEIGHT, viewportWidth, height - RULER_HEIGHT);
     ctx.clip();
 
     // Track headers and lane backgrounds (offset by scrollTop)
@@ -91,13 +104,13 @@ export default function TimelineCanvas({
 
       // Header background
       ctx.fillStyle = '#27272a';
-      ctx.fillRect(0, y, HEADER_WIDTH, TRACK_HEIGHT);
+      ctx.fillRect(scrollLeft, y, HEADER_WIDTH, TRACK_HEIGHT);
       ctx.strokeStyle = '#3f3f46';
-      ctx.strokeRect(0, y, HEADER_WIDTH, TRACK_HEIGHT);
+      ctx.strokeRect(scrollLeft, y, HEADER_WIDTH, TRACK_HEIGHT);
 
       // Track lane background
       ctx.fillStyle = i % 2 === 0 ? '#1c1c20' : '#202024';
-      ctx.fillRect(HEADER_WIDTH, y, canvasWidth - HEADER_WIDTH, TRACK_HEIGHT);
+      ctx.fillRect(Math.max(HEADER_WIDTH, scrollLeft), y, viewportWidth, TRACK_HEIGHT);
     });
 
     // Snap guide line
@@ -144,12 +157,13 @@ export default function TimelineCanvas({
       ctx.lineTo(playheadX, RULER_HEIGHT);
       ctx.stroke();
     }
-  }, [timeline, currentTime, totalDuration, pixelsPerSec, snapGuideTime, canvasWidth, height, scrollTop]);
+  }, [timeline, currentTime, totalDuration, pixelsPerSec, snapGuideTime, canvasWidth, height, scrollTop, scrollLeft, viewportWidth]);
 
   return (
     <canvas
       ref={canvasRef}
-      className="block absolute top-0 left-0 pointer-events-none"
+      className="block absolute top-0 pointer-events-none"
+      style={{ left: scrollLeft }}
     />
   );
 }

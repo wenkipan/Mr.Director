@@ -4,24 +4,42 @@ import { updateTimeline } from '../lib/api';
 
 /**
  * Auto-saves timeline to backend with debounce when timelineDirty is true.
+ * Skips saving while the agent is active to avoid overwriting agent changes.
+ * Handles 409 (agent active on server side) gracefully.
  */
 export function useAutoSave(debounceMs: number = 1000) {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { timeline, projectId, timelineDirty, setTimelineDirty } = useAppStore();
+  const { timeline, projectId, timelineDirty, setTimelineDirty, agentProgress } = useAppStore();
 
   useEffect(() => {
     if (!timelineDirty || !projectId || !timeline) return;
+
+    // Don't auto-save while agent is modifying the timeline
+    if (agentProgress.isActive) return;
 
     if (timerRef.current) clearTimeout(timerRef.current);
 
     timerRef.current = setTimeout(() => {
       updateTimeline(projectId, timeline)
-        .then(() => setTimelineDirty(false))
-        .catch((e) => console.error('Auto-save failed:', e));
+        .then((res) => {
+          setTimelineDirty(false);
+          // Update version from server response
+          if (res?.version) {
+            useAppStore.setState({ timelineVersion: res.version });
+          }
+        })
+        .catch((e) => {
+          if ((e as any).status === 409) {
+            // Agent is active on server — skip, will retry after agent finishes
+            console.warn('Auto-save skipped: agent is active');
+          } else {
+            console.error('Auto-save failed:', e);
+          }
+        });
     }, debounceMs);
 
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [timelineDirty, timeline, projectId, debounceMs, setTimelineDirty]);
+  }, [timelineDirty, timeline, projectId, debounceMs, setTimelineDirty, agentProgress.isActive]);
 }

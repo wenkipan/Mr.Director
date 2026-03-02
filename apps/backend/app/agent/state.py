@@ -14,3 +14,10 @@ class AgentState:
     conversation_history: list[dict] = field(default_factory=list)
     current_timeline: TimelineProject | None = None
     _pending_user_response: str | None = None
+    version: int = 0
+    agent_active: bool = False
+
+    def bump_version(self) -> int:
+        """Increment version counter and return the new value."""
+        self.version += 1
+        return self.version

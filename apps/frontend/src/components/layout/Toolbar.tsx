@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useAppStore } from '../../stores/appStore';
-import { startExport, getExportStatus, exportInterchange } from '../../lib/api';
+import { startExport, getExportStatus, exportInterchange, getGpuStatus, type GpuStatus } from '../../lib/api';
 import ExportProgressModal from './ExportProgressModal';
 
 type ExportStatus = 'idle' | 'queued' | 'rendering' | 'completed' | 'error';
@@ -21,7 +21,15 @@ export default function Toolbar() {
     error: null,
   });
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [gpuStatus, setGpuStatus] = useState<GpuStatus | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Fetch GPU status on mount
+  useEffect(() => {
+    getGpuStatus()
+      .then(setGpuStatus)
+      .catch((err) => console.warn('GPU check failed:', err));
+  }, []);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -106,8 +114,20 @@ export default function Toolbar() {
           {timeline?.project.name ?? 'Untitled'}
         </span>
 
-        {/* Right: export dropdown */}
-        <div className="relative" ref={dropdownRef}>
+        {/* Right: GPU warning + export dropdown */}
+        <div className="flex items-center">
+          {gpuStatus && !gpuStatus.gpu_available && (
+            <div
+              className="flex items-center gap-1 text-xs text-amber-400 mr-2 cursor-help"
+              title={gpuStatus.reason}
+            >
+              <svg className="h-3.5 w-3.5 shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.168 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 6a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 6zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+              </svg>
+              <span className="hidden sm:inline truncate max-w-[120px]">CPU render</span>
+            </div>
+          )}
+          <div className="relative" ref={dropdownRef}>
           <div className="flex items-center">
             {/* Main export button (MP4) */}
             <button
@@ -175,6 +195,7 @@ export default function Toolbar() {
             </div>
           )}
         </div>
+        </div>
       </div>
 
       {/* Export progress toast */}
@@ -184,6 +205,9 @@ export default function Toolbar() {
           progress={exportState.progress}
           status={exportState.status}
           error={exportState.error}
+          warning={gpuStatus && !gpuStatus.gpu_available
+            ? `Software rendering (slower): ${gpuStatus.reason}`
+            : null}
           onClose={handleCloseModal}
         />
       )}
