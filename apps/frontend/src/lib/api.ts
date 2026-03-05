@@ -107,11 +107,12 @@ export async function getExportStatus(exportId: string) {
   return res.json();
 }
 
-export async function sendChatMessage(message: string, projectId: string) {
+export async function sendChatMessage(message: string, projectId: string, signal?: AbortSignal) {
   const res = await fetch(`${API_BASE}/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ message, project_id: projectId }),
+    signal,
   });
   if (!res.ok) throw new Error(`Failed to send message: ${res.statusText}`);
   return res.json();

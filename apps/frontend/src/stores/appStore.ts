@@ -13,6 +13,8 @@ export interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp?: string;
+  toolCalls?: ToolCallProgress[];
+  reasonings?: string[];
 }
 
 export interface ToolCallProgress {
@@ -26,7 +28,7 @@ export interface ToolCallProgress {
 export interface AgentProgress {
   isActive: boolean;
   toolCalls: ToolCallProgress[];
-  reasoning: string | null;
+  reasonings: string[];
 }
 
 const MAX_UNDO = 50;
@@ -70,6 +72,8 @@ interface AppStore {
   // WebSocket connection
   wsConnected: boolean;
   setWsConnected: (c: boolean) => void;
+  wsSend: ((data: string) => void) | null;
+  setWsSend: (fn: ((data: string) => void) | null) => void;
 
   // Agent progress
   agentProgress: AgentProgress;
@@ -77,6 +81,8 @@ interface AppStore {
   onToolEnd: (toolName: string, resultSummary: string, isError: boolean) => void;
   onAgentReasoning: (reasoning: string) => void;
   onAgentDone: () => void;
+  onAgentAborted: () => void;
+  archiveAgentProgress: () => { toolCalls?: ToolCallProgress[]; reasonings?: string[] };
 
   // Project
   projectId: string | null;
@@ -190,9 +196,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
   // WebSocket
   wsConnected: false,
   setWsConnected: (c) => set({ wsConnected: c }),
+  wsSend: null,
+  setWsSend: (fn) => set({ wsSend: fn }),
 
   // Agent progress
-  agentProgress: { isActive: false, toolCalls: [], reasoning: null },
+  agentProgress: { isActive: false, toolCalls: [], reasonings: [] },
 
   onToolStart: (toolName, toolArgs, iteration) =>
     set((s) => ({
@@ -220,11 +228,31 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   onAgentReasoning: (reasoning) =>
     set((s) => ({
-      agentProgress: { ...s.agentProgress, reasoning },
+      agentProgress: {
+        ...s.agentProgress,
+        reasonings: [...s.agentProgress.reasonings, reasoning],
+      },
     })),
 
   onAgentDone: () =>
-    set({ agentProgress: { isActive: false, toolCalls: [], reasoning: null } }),
+    set((s) => ({
+      agentProgress: { ...s.agentProgress, isActive: false },
+    })),
+
+  onAgentAborted: () =>
+    set((s) => ({
+      agentProgress: { ...s.agentProgress, isActive: false },
+    })),
+
+  archiveAgentProgress: () => {
+    const { agentProgress } = get();
+    const snapshot = {
+      toolCalls: agentProgress.toolCalls.length > 0 ? [...agentProgress.toolCalls] : undefined,
+      reasonings: agentProgress.reasonings.length > 0 ? [...agentProgress.reasonings] : undefined,
+    };
+    set({ agentProgress: { isActive: false, toolCalls: [], reasonings: [] } });
+    return snapshot;
+  },
 
   // Project
   projectId: localStorage.getItem('mrdv2_projectId'),

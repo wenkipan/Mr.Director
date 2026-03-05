@@ -261,6 +261,8 @@ def _exec_add(timeline: TimelineProject, op: dict) -> dict:
 
 
 def _exec_update(timeline: TimelineProject, op: dict) -> dict:
+    from app.models.timeline import SubtitleStyle, VideoStyle
+
     clip_id = op.get("clip_id")
     if not clip_id:
         return {"error": "update: missing clip_id"}
@@ -278,10 +280,16 @@ def _exec_update(timeline: TimelineProject, op: dict) -> dict:
             setattr(clip, field, float(op[field]) if op[field] is not None else None)
 
     # Updatable object/string fields
-    EXTRA_FIELDS = {"subtitle_text", "subtitle_style", "video_style"}
-    for field in EXTRA_FIELDS:
-        if field in op:
-            setattr(clip, field, op[field])
+    if "subtitle_text" in op:
+        clip.subtitle_text = op["subtitle_text"]
+
+    if "subtitle_style" in op:
+        style = op["subtitle_style"]
+        clip.subtitle_style = SubtitleStyle(**style) if isinstance(style, dict) else style
+
+    if "video_style" in op:
+        style = op["video_style"]
+        clip.video_style = VideoStyle(**style) if isinstance(style, dict) else style
 
     _recompute_duration(clip)
     track.clips.sort(key=lambda c: c.timeline_start_sec)
@@ -367,16 +375,20 @@ async def edit_clips(args: dict, state) -> dict:
 
 @registry.register(
     name="split_timeline",
-    description="Split all clips at one or more timeline time points. "
-    "No clip_id or track_id needed — automatically finds and splits every clip "
-    "that covers each time point. Returns new clip IDs for further editing.",
+    description="Split clips at one or more timeline time points. "
+    "If track_id is given, only clips on that track are split; "
+    "otherwise ALL tracks are split. Returns new clip IDs for further editing.",
     parameters={
         "type": "OBJECT",
         "properties": {
             "split_points": {
                 "type": "STRING",
                 "description": "JSON array of timeline times (seconds) at which to cut. "
-                "Example: [15.0, 30.0]. Each point splits ALL clips covering that time.",
+                "Example: [15.0, 30.0].",
+            },
+            "track_id": {
+                "type": "STRING",
+                "description": "Optional. If provided, only split clips on this track.",
             },
         },
         "required": ["split_points"],
@@ -398,11 +410,15 @@ async def split_timeline(args: dict, state) -> dict:
     except (TypeError, ValueError) as e:
         return {"error": f"split_points must be numbers: {e}"}
 
+    track_id = args.get("track_id")
+    if track_id and not _find_track(state.current_timeline, track_id):
+        return {"error": f"Track not found: {track_id}"}
+
     snapshot = deepcopy(state.current_timeline)
     all_splits = []
 
     for point in split_points:
-        splits_at_point = _split_at_time(state.current_timeline, point)
+        splits_at_point = _split_at_time(state.current_timeline, point, track_id)
         if splits_at_point:
             all_splits.append({"split_at_sec": point, "splits": splits_at_point})
 
@@ -413,11 +429,15 @@ async def split_timeline(args: dict, state) -> dict:
     return {"success": True, "results": all_splits}
 
 
-def _split_at_time(timeline: TimelineProject, split_at: float) -> list[dict]:
-    """Split all clips covering the given timeline time. Returns list of split results."""
+def _split_at_time(timeline: TimelineProject, split_at: float, track_id: str | None = None) -> list[dict]:
+    """Split clips covering the given timeline time. If track_id is set, only that track is affected."""
     results = []
 
-    for track in timeline.tracks:
+    tracks = timeline.tracks
+    if track_id:
+        tracks = [t for t in tracks if t.id == track_id]
+
+    for track in tracks:
         # Collect clips to split (iterate over a copy since we modify the list)
         for clip in list(track.clips):
             clip_end = clip.timeline_start_sec + clip.duration_sec

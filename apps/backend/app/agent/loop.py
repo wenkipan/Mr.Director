@@ -39,10 +39,12 @@ class ReActAgent:
         """Run the agent loop. Returns the agent's final text response."""
 
         state.agent_active = True
+        state.abort_requested = False
         try:
             return await self._run_loop(user_message, state)
         finally:
             state.agent_active = False
+            state.abort_requested = False
 
     async def _run_loop(self, user_message: str, state: AgentState) -> str:
         """Internal agent loop implementation."""
@@ -57,6 +59,10 @@ class ReActAgent:
         tool_defs = registry.as_tool_defs()
 
         for iteration in range(MAX_ITERATIONS):
+            # Abort checkpoint 1: before LLM call
+            if state.abort_requested:
+                break
+
             logger.info(f"Agent iteration {iteration + 1}/{MAX_ITERATIONS}")
 
             try:
@@ -101,6 +107,10 @@ class ReActAgent:
             state.conversation_history.append(assistant_msg)
 
             for tc in response.tool_calls:
+                # Abort checkpoint 2: before tool execution
+                if state.abort_requested:
+                    break
+
                 logger.info(f"Tool call: {tc.name}({json.dumps(tc.args, ensure_ascii=False)[:200]})")
 
                 # Broadcast tool_start progress
@@ -146,6 +156,10 @@ class ReActAgent:
                     )
                     _save_timeline(state)
 
+                # Abort checkpoint 3: after tool execution
+                if state.abort_requested:
+                    break
+
                 # User-facing tools: stop the loop and return the message
                 if tc.name in USER_FACING_TOOLS:
                     should_stop = True
@@ -162,6 +176,13 @@ class ReActAgent:
                 return final_text
 
             # Continue the loop for the next iteration
+
+        # Handle abort: user requested interruption
+        if state.abort_requested:
+            abort_text = "I was interrupted. You can send a new message to continue."
+            state.conversation_history.append({"role": "assistant", "content": abort_text})
+            await ws_manager.broadcast_agent_progress(state.project_id, event="agent_aborted")
+            return abort_text
 
         await ws_manager.broadcast_agent_progress(state.project_id, event="agent_done")
         return "I've reached the maximum number of reasoning steps. Please try breaking your request into smaller parts."

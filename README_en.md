@@ -1,47 +1,71 @@
-# Video Agent — LLM as Director
+# Mr.Director V2 — AI Native Video Editor
 
 English | [中文](README.md)
 
-As a lazy person, I'm always looking for shortcuts.
-Now that code is all vibecoding, you really expect me to manually edit videos?
-That's why this project exists — a video editing agent like Claude Code / Codex, but for video.
+As a lazy developer, I'm always looking for shortcuts.
+Now that coding is all about vibecoding, do you really expect me to manually edit videos?
+That's why this project exists — a video editing agent like Claude Code / Codex.
 
 Dead simple: drop in a screen recording, say "cut it into a 30-second TikTok," and walk away.
 
 ```
->>> Cut that screen recording on the desktop into a 30-second TikTok, use the final result as the opening
+>>> Cut that screen recording on the desktop into a 30-second TikTok, use the best part as the opening
 ```
 
 ## How It Works
 
-Not a fixed pipeline of "select clips → fill in parameters → click export."
+Not a fixed pipeline of "select clips → fill parameters → click export."
 More like hiring a director — you state your intent, and it figures out the rest.
 
-The Agent uses Gemini to understand the video content, then runs local Whisper to transcribe speech word-by-word with frame-level timestamps (~100ms precision). Finally, it presents an editing plan for your approval before making any cuts.
+The Agent uses Gemini (or any OpenAI-compatible model) to understand video content, then runs local Whisper to transcribe speech word-by-word with ~100ms timestamp precision. Finally, it presents an editing plan for your approval before making any cuts.
 
 Changed your mind? Just say so — it'll revise the plan and confirm again. It won't make changes behind your back.
+
+## Core Features
+
+### 🎬 Multimodal Video Understanding
+Gemini multimodal analysis of video content: scene detection, pacing, visual style, text recognition, and intelligent editing suggestions.
+
+### 🎤 Local Speech Transcription
+Whisper runs locally for word-level transcription with ~100ms timestamp precision and automatic language detection. No audio uploads to the cloud.
+
+### 🤖 ReAct Agent Architecture
+Not a rigid workflow, but an autonomous decision-making Agent. Like Claude Code: you say "fix this bug," and it decides which files to read, which lines to change, and which tests to run. When the Agent receives materials + intent, it autonomously decides whether to analyze visuals first or transcribe audio first.
+
+### 📝 Timeline JSON Core
+A platform-agnostic editing plan description format that can be re-edited in any compatible software:
+- Multi-track timeline (video/audio/subtitle)
+- Cut, join, speed ramping
+- Picture-in-picture, crop, opacity
+- Subtitle style customization
+
+### 🚀 Real-time Preview & Export
+- **Remotion Browser Rendering**: See changes instantly without exporting
+- **Remotion SSR Export**: MP4 video export
+- **Professional Format Export**: OTIO / FCPXML7 for seamless integration with DaVinci Resolve, Final Cut Pro
+
+### 🛠️ Powerful Tool Set
+- **Shell Access**: Agent can run ffprobe, mediainfo to explore media on its own
+- **Local File Access**: Direct filesystem access, no uploads needed
+- **Time Mapping**: Automatic Source Time ↔ Timeline Time conversion
+- **Batch Operations**: Clip CRUD supports batch transactions with automatic rollback on errors
 
 ## Why Another Video Editor?
 
 You might ask: with tools like NemoVideo and ChatCut already out there, why build another one?
 
-My answer: **local-first, privacy-first, sky-high ceiling.**
+My answer: **local-first, privacy-first, sky-high ceiling, open-source and controllable**
 
-Don't want to upload files to external services? This project is designed for local file access from the ground up.
+- Don't want to upload files to external services? This project is designed for local file access from the ground up
+- Don't want to rely on cloud LLMs? Supports Gemini and any OpenAI-compatible API (DeepSeek, Qwen, OpenRouter, etc.)
+- Most importantly, it's open source — configure it however you want
+- You can preset editing styles/templates in the system prompt, or let the LLM learn your editing preferences from conversations
 
-Don't want to rely on cloud LLMs? You can use local models — just might need to tweak some code.
+## UI Preview
 
-Most importantly, it's open source. Configure it however you want.
-
-You can even provide an editing style or template in the system prompt, or let the LLM summarize your editing style from each conversation.(good idea, see you in todos)
-
-It also has shell access — the first time I used it, I forgot to specify the working directory, and it found the files I described on its own.
-
-## quicklook
-
-![描述文字](docs/image.png) 
-![描述文字](docs/image2.png) 
-![描述文字](docs/image4.png) 
+![UI Screenshot](docs/image.png)
+![Timeline Editing](docs/image2.png)
+![Export Feature](docs/image4.png)
 
 ## Getting Started
 
@@ -51,7 +75,7 @@ It also has shell access — the first time I used it, I forgot to specify the w
 - Python 3.11+
 - pnpm
 - FFmpeg / ffprobe
-- Gemini API Key (get one from [Google AI Studio](https://aistudio.google.com/))
+- API Key ([Google AI Studio](https://aistudio.google.com/) or any OpenAI-compatible service)
 
 ### Installation
 
@@ -66,20 +90,35 @@ pip install -e .
 
 ### Configuration
 
-Copy `apps/backend/.env.example` to `apps/backend/.env` and fill in your Gemini API Key:
+Copy `apps/backend/.env.example` to `apps/backend/.env`:
 
+**Using Gemini (default):**
 ```bash
 MRDV2_GEMINI_API_KEY=your-key-here
+MRDV2_GEMINI_MODEL=gemini-2.5-flash
 ```
 
-Optional configuration:
+**Using OpenAI-compatible API (DeepSeek / Qwen / OpenRouter, etc.):**
+```bash
+MRDV2_LLM_PROVIDER=openai
+MRDV2_OPENAI_API_KEY=sk-xxx
+MRDV2_OPENAI_MODEL=gpt-4o
+# Optional: custom base_url
+MRDV2_OPENAI_BASE_URL=https://api.deepseek.com/v1
+# Optional: enable thinking mode (dashscope / deepseek / off)
+MRDV2_OPENAI_THINKING=deepseek
+```
+
+**Other optional configurations:**
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `MRDV2_GEMINI_BASE_URL` | `""` | Custom API endpoint (proxy/relay) |
-| `MRDV2_GEMINI_MODEL` | `gemini-2.5-flash` | Model name（myself using 3.1, anyproblem plz issue ） |
+| `MRDV2_GEMINI_BASE_URL` | `""` | Gemini custom API endpoint (proxy/relay) |
 | `MRDV2_WHISPER_MODEL_SIZE` | `medium` | Whisper model size (tiny/small/base/medium/large) |
 | `MRDV2_WHISPER_DEVICE` | `auto` | Compute device (auto/cuda/cpu) |
+| `MRDV2_PROJECTS_DIR` | `./projects` | Project files storage path |
+| `MRDV2_EXPORTS_DIR` | `./projects/exports` | Export files path |
+| `MRDV2_EXPORT_GL` | `auto` | Video rendering GL backend (auto/angle-egl/swangle/egl/vulkan) |
 
 ### Run
 
@@ -94,46 +133,83 @@ pnpm dev:backend    # http://localhost:8000
 
 Open `http://localhost:5173` in your browser, create a project, and start chatting.
 
-## Features
+## Usage Examples
 
-**Video Understanding** — Gemini multimodal analysis of video content: scene detection, pacing, visual style, text recognition, and editing suggestions
+### Basic Editing
+```
+Cut the screen recording on the desktop into a 30-second TikTok video, use the best part as the opening
+```
 
-**Speech Transcription** — Local Whisper word-level transcription with ~100ms timestamp precision and automatic language detection
+### Smart Subtitles
+```
+Add subtitles to this video, style them like those big TikTok captions
+```
 
-**Smart Editing** — Automatically generates editing plans based on analysis: split, join, speed ramp, arrange — all from a single sentence
+### Speech Cleanup
+```
+Help me cut out the pauses, repetitions, and filler words from this video
+```
 
-**Subtitle Generation** — One-click subtitle track creation from transcription results, auto-aligned to the timeline
+### Picture-in-Picture
+```
+Make the small window in the top right bigger and move it to the bottom left
+```
 
-**Real-time Preview** — In-browser rendering via Remotion: see changes instantly without exporting
+### Timeline Fine-tuning
+Directly drag clips in the timeline editor, adjust in/out points, split segments — all changes sync to the preview in real-time.
 
-**Plan Confirmation** — The Agent presents its editing plan for your approval before executing. Change your mind anytime
+## Technical Architecture
 
-**Shell Access** — Built-in sandboxed shell (ffprobe, mediainfo, etc.) so the Agent can explore media file metadata on its own
+```
+User Input
+    ↓
+ReAct Agent (Gemini/OpenAI)
+    ↓
+Tool Calls: analyze_video | transcribe_audio | edit_clips | split_timeline
+    ↓
+Timeline JSON (platform-agnostic editing plan)
+    ↓
+WebSocket Real-time Push
+    ↓
+Remotion Browser Rendering Preview
+    ↓
+Export: Remotion SSR → MP4 / OTIO / FCPXML7
+```
 
-**Local File Access** — Direct local filesystem access, no uploads needed
+## Implemented Features
 
-## Roadmap
-
-The project isn't as polished as I'd like yet, but its core is built on Gemini's multimodal capabilities. As LLMs get stronger, many current limitations will naturally resolve.
+- ✅ 3-Column UI (Media Browser | Video Preview + Multi-track Timeline | Chat Panel)
+- ✅ Timeline Visual Editing (drag, split, delete, move)
+- ✅ Real-time Agent Progress Display (thinking process, tool call status)
+- ✅ Support for interrupting Agent operations
+- ✅ Timeline JSON ↔ OTIO / FCPXML7 Export
+- ✅ Remotion SSR Video Export
+- ✅ Multi-LLM Backend Support (Gemini / OpenAI-compatible)
+- ✅ Undo/Redo
 
 ## TODO
 
-~~A UI that's slightly better than typing in a black terminal~~ (done)
+- 🚧 WebGPU + WGSL: Color Grading (RGB curves, HSL secondary grading)
+- 🚧 Effects System
+- 🚧 Personalized Editing Style Learning
+- 🚧 Artlist API Smart Music Matching
+- 🚧 Keyframe Animation
+- 🚧 Transition Effects
 
-WebGPU + WGSL: color grading
+## Architecture Decisions
 
-Effects
+### Why Timeline JSON instead of using OTIO directly?
 
-Personalized editing styles
+OTIO is powerful but has almost zero support for subtitles (they get lost when exporting to DaVinci Resolve and Kdenlive). We need a more flexible internal format, converting to industry standards only at export time.
 
-~~Timeline JSON export to OTIO or FCPXML7~~ (done...maybe? OTIO has no dedicated subtitle support at all — when exporting to DaVinci Resolve and Kdenlive, subtitles were lost, plus all kinds of bizarre bugs. Using a video editor on Linux is truly pain)
+### Why Remotion?
 
-See SPEC.md for more details.
+After researching ChatCut, NemoVideo, and various open-source editing tools, we found browser-based rendering provides the closest "change it and see it" experience. Remotion lets us describe videos with React while supporting both browser preview and SSR export.
 
-## A Note on a Major Architecture Decision
+### Why not FFmpeg directly?
 
-I originally tried to go timeline-free using FFmpeg directly.
+We initially tried using FFmpeg filter chains directly, but quickly realized that editing without a Timeline abstraction and color management (ACES) is fighting against the grain. The Timeline is the fundamental concept that makes editing possible.
 
-After digging deeper, I realized that timelines (and things like ACES color management) are the very foundation that makes editing possible. Going timeline-free was fighting against the grain.
+## License
 
-So after researching ChatCut, NemoVideo, and various open-source editing tools, I settled on Remotion + WebGPU for the frontend timeline rendering.
+MIT License — use freely, contributions welcome!

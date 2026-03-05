@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useAppStore } from '../stores/appStore';
 
 export function useWebSocket(projectId: string | null) {
-  const { setTimelineFromServer, addMessage, setWsConnected, onToolStart, onToolEnd, onAgentReasoning, onAgentDone } = useAppStore();
+  const { setTimelineFromServer, addMessage, setWsConnected, setWsSend, onToolStart, onToolEnd, onAgentReasoning, onAgentDone, onAgentAborted } = useAppStore();
   const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
@@ -11,9 +11,17 @@ export function useWebSocket(projectId: string | null) {
     const ws = new WebSocket(`ws://${window.location.host}/ws/timeline?project_id=${projectId}`);
     wsRef.current = ws;
 
-    ws.onopen = () => setWsConnected(true);
+    ws.onopen = () => {
+      setWsConnected(true);
+      setWsSend((data: string) => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(data);
+        }
+      });
+    };
     ws.onclose = () => {
       setWsConnected(false);
+      setWsSend(null);
       wsRef.current = null;
     };
 
@@ -54,6 +62,9 @@ export function useWebSocket(projectId: string | null) {
               case 'agent_done':
                 onAgentDone();
                 break;
+              case 'agent_aborted':
+                onAgentAborted();
+                break;
             }
             break;
           }
@@ -69,9 +80,10 @@ export function useWebSocket(projectId: string | null) {
 
     return () => {
       ws.close();
+      setWsSend(null);
       wsRef.current = null;
     };
-  }, [projectId, setTimelineFromServer, addMessage, setWsConnected, onToolStart, onToolEnd, onAgentReasoning, onAgentDone]);
+  }, [projectId, setTimelineFromServer, addMessage, setWsConnected, setWsSend, onToolStart, onToolEnd, onAgentReasoning, onAgentDone, onAgentAborted]);
 
   return wsRef;
 }

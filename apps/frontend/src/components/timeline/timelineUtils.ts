@@ -229,6 +229,83 @@ export function addClipToTimeline(
   return newTimeline;
 }
 
+/** Check if two clips can be merged (same track, adjacent, compatible) */
+export function canMergeClips(
+  timeline: TimelineProject,
+  clipId1: string,
+  clipId2: string,
+): boolean {
+  return mergeClipsInTimeline(timeline, clipId1, clipId2) !== null;
+}
+
+/** Merge two adjacent clips on the same track into one. Returns null if not mergeable. */
+export function mergeClipsInTimeline(
+  timeline: TimelineProject,
+  clipId1: string,
+  clipId2: string,
+): TimelineProject | null {
+  const found1 = findClipById(timeline, clipId1);
+  const found2 = findClipById(timeline, clipId2);
+  if (!found1 || !found2) return null;
+
+  // Must be on the same track
+  if (found1.trackIndex !== found2.trackIndex) return null;
+
+  // Sort by timeline position
+  const [first, second] =
+    found1.clip.timeline_start_sec <= found2.clip.timeline_start_sec
+      ? [found1.clip, found2.clip]
+      : [found2.clip, found1.clip];
+
+  // Must be precisely adjacent
+  const firstEnd = first.timeline_start_sec + first.duration_sec;
+  if (firstEnd !== second.timeline_start_sec) return null;
+
+  // Must be same type
+  if (first.type !== second.type) return null;
+
+  // Type-specific checks for video/audio
+  if (first.type === 'video' || first.type === 'audio') {
+    if (first.media_id !== second.media_id) return null;
+    if ((first.speed ?? 1) !== (second.speed ?? 1)) return null;
+    if (first.source_out_sec == null || second.source_in_sec == null) return null;
+    if (first.source_out_sec !== second.source_in_sec) return null;
+  }
+
+  // Build merged clip (inherit from first)
+  const merged: Clip = {
+    ...first,
+    duration_sec: first.duration_sec + second.duration_sec,
+  };
+
+  if (first.type === 'video' || first.type === 'audio') {
+    merged.source_out_sec = second.source_out_sec;
+  }
+
+  if (first.type === 'subtitle') {
+    const t1 = first.subtitle_text || '';
+    const t2 = second.subtitle_text || '';
+    merged.subtitle_text = t1 && t2 ? `${t1}\n${t2}` : t1 || t2;
+  }
+
+  const trackIndex = found1.trackIndex;
+  const removeIds = new Set([first.id, second.id]);
+
+  return {
+    ...timeline,
+    tracks: timeline.tracks.map((track, idx) =>
+      idx === trackIndex
+        ? {
+            ...track,
+            clips: track.clips.flatMap((c) =>
+              removeIds.has(c.id) ? (c.id === first.id ? [merged] : []) : [c],
+            ),
+          }
+        : track,
+    ),
+  };
+}
+
 /** Split a clip at a given timeline time, producing two clips */
 export function splitClipInTimeline(
   timeline: TimelineProject,

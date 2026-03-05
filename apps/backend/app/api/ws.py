@@ -1,8 +1,12 @@
+import json
+import logging
+
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from app.services.ws_manager import ws_manager
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.websocket("/ws/timeline")
@@ -12,6 +16,17 @@ async def timeline_ws(websocket: WebSocket, project_id: str = "default"):
     try:
         while True:
             data = await websocket.receive_text()
-            # Client messages (ack, seek, etc.) can be handled here
+            try:
+                msg = json.loads(data)
+                if msg.get("type") == "abort_agent":
+                    from app.api.chat import get_or_create_state
+
+                    target_project = msg.get("project_id", project_id)
+                    state = get_or_create_state(target_project)
+                    if state.agent_active:
+                        state.abort_requested = True
+                        logger.info(f"Abort requested for project {target_project}")
+            except (json.JSONDecodeError, KeyError):
+                pass
     except WebSocketDisconnect:
         ws_manager.disconnect(project_id, websocket)

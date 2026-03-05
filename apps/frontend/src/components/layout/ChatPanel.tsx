@@ -2,12 +2,14 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { useAppStore } from '../../stores/appStore';
 import { sendChatMessage } from '../../lib/api';
 import AgentProgressDisplay from '../chat/AgentProgressDisplay';
+import MessageProgressDisplay from '../chat/MessageProgressDisplay';
 
 export default function ChatPanel() {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
-  const { messages, addMessage, projectId, onAgentDone } = useAppStore();
+  const { messages, addMessage, projectId, archiveAgentProgress, wsSend } = useAppStore();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     const ta = textareaRef.current;
@@ -15,6 +17,12 @@ export default function ChatPanel() {
     ta.style.height = 'auto';
     ta.style.height = `${ta.scrollHeight}px`;
   }, [input]);
+
+  const handleAbort = useCallback(() => {
+    if (!projectId || !wsSend) return;
+    wsSend(JSON.stringify({ type: 'abort_agent', project_id: projectId }));
+    abortControllerRef.current?.abort();
+  }, [projectId, wsSend]);
 
   const handleSend = useCallback(async () => {
     const text = input.trim();
@@ -24,18 +32,27 @@ export default function ChatPanel() {
     setInput('');
     setSending(true);
 
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     try {
-      const res = await sendChatMessage(text, projectId || 'default');
+      const res = await sendChatMessage(text, projectId || 'default', controller.signal);
       if (res.message) {
-        addMessage({ role: 'assistant', content: res.message });
+        const { toolCalls, reasonings } = archiveAgentProgress();
+        addMessage({ role: 'assistant', content: res.message, toolCalls, reasonings });
       }
     } catch (e: any) {
-      addMessage({ role: 'system', content: `Error: ${e.message}` });
+      const { toolCalls, reasonings } = archiveAgentProgress();
+      if (e.name === 'AbortError') {
+        addMessage({ role: 'assistant', content: 'Interrupted by user.', toolCalls, reasonings });
+      } else {
+        addMessage({ role: 'system', content: `Error: ${e.message}` });
+      }
     } finally {
+      abortControllerRef.current = null;
       setSending(false);
-      onAgentDone(); // Safety reset in case WS disconnected
     }
-  }, [input, sending, projectId, addMessage, onAgentDone]);
+  }, [input, sending, projectId, addMessage, archiveAgentProgress]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -58,17 +75,21 @@ export default function ChatPanel() {
           </div>
         )}
         {messages.map((msg, i) => (
-          <div
-            key={i}
-            className={`text-sm rounded-lg px-3 py-2 ${
-              msg.role === 'user'
-                ? 'bg-blue-900/40 text-blue-100 ml-4'
-                : msg.role === 'system'
-                  ? 'bg-red-900/30 text-red-300 text-xs'
-                  : 'bg-zinc-800 text-zinc-200 mr-4'
-            }`}
-          >
-            <div className="whitespace-pre-wrap">{msg.content}</div>
+          <div key={i}>
+            {msg.role === 'assistant' && (msg.toolCalls || msg.reasonings) && (
+              <MessageProgressDisplay toolCalls={msg.toolCalls} reasonings={msg.reasonings} />
+            )}
+            <div
+              className={`text-sm rounded-lg px-3 py-2 ${
+                msg.role === 'user'
+                  ? 'bg-blue-900/40 text-blue-100 ml-4'
+                  : msg.role === 'system'
+                    ? 'bg-red-900/30 text-red-300 text-xs'
+                    : 'bg-zinc-800 text-zinc-200 mr-4'
+              }`}
+            >
+              <div className="whitespace-pre-wrap">{msg.content}</div>
+            </div>
           </div>
         ))}
         <AgentProgressDisplay />
@@ -87,13 +108,22 @@ export default function ChatPanel() {
             rows={1}
             className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-blue-500 disabled:opacity-50 resize-none max-h-40 overflow-y-auto"
           />
-          <button
-            onClick={handleSend}
-            disabled={sending || !input.trim()}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
-          >
-            Send
-          </button>
+          {sending ? (
+            <button
+              onClick={handleAbort}
+              className="px-4 py-2 bg-red-600 hover:bg-red-500 rounded-lg text-sm font-medium transition-colors shrink-0"
+            >
+              Stop
+            </button>
+          ) : (
+            <button
+              onClick={handleSend}
+              disabled={!input.trim()}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+            >
+              Send
+            </button>
+          )}
         </div>
       </div>
     </div>

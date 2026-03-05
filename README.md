@@ -51,7 +51,9 @@ Agent 会用 Gemini 看懂视频画面，再用本地 Whisper 把语音一句一
 - Python 3.11+
 - pnpm
 - FFmpeg / ffprobe
-- Gemini API Key（[Google AI Studio](https://aistudio.google.com/) 获取）
+- API Key（以下任选其一）：
+  - Gemini API Key（[Google AI Studio](https://aistudio.google.com/)）
+  - 或 OpenAI 兼容 API Key（DeepSeek、Qwen、OpenRouter 等）
 
 ### 安装
 
@@ -76,10 +78,16 @@ MRDV2_GEMINI_API_KEY=your-key-here
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
+| `MRDV2_LLM_PROVIDER` | `gemini` | LLM 提供商：`gemini` 或 `openai` |
 | `MRDV2_GEMINI_BASE_URL` | `""` | 自定义 API 端点（代理/中转） |
-| `MRDV2_GEMINI_MODEL` | `gemini-2.5-flash` | 模型名称(我用3.1的，也只测过3.1,有问题issue见) |
+| `MRDV2_GEMINI_MODEL` | `gemini-3-flash` | Gemini 模型名称(推荐 3.1 pro) |
+| `MRDV2_OPENAI_API_KEY` | `""` | OpenAI 兼容 API Key |
+| `MRDV2_OPENAI_MODEL` | `gpt-4o` | 模型名称 |
+| `MRDV2_OPENAI_BASE_URL` | `""` | 自定义端点（如 `https://api.deepseek.com/v1`） |
+| `MRDV2_OPENAI_THINKING` | `off` | 思考模式：`off` / `dashscope` / `deepseek` |
 | `MRDV2_WHISPER_MODEL_SIZE` | `medium` | Whisper 模型大小（tiny/small/base/medium/large） |
 | `MRDV2_WHISPER_DEVICE` | `auto` | 计算设备（auto/cuda/cpu） |
+| `MRDV2_EXPORT_GL` | `auto` | 视频导出 GPU 加速：auto / angle-egl / swangle / vulkan |
 
 ### 启动
 
@@ -102,15 +110,27 @@ pnpm dev:backend    # http://localhost:8000
 
 **智能剪辑** — 基于理解结果自动生成剪辑方案：切分、拼接、变速、排列，一句话搞定
 
+**批量剪辑** — `edit_clips` 工具支持原子化批量操作，失败自动回滚
+
+**时间线分割** — `split_timeline` 按时间点精准切割片段
+
 **字幕生成** — 转录结果一键生成字幕轨道，自动对齐时间轴
 
 **实时预览** — Remotion 浏览器内渲染，改了就能看，不用等导出
 
 **方案确认** — Agent 先出方案让你过目，点头了才动刀，改主意随时说
 
+**Agent 进度可视化** — WebSocket 实时推送 Agent 思考过程、工具调用状态
+
+**撤销/重做** — 时间线编辑支持多步撤销重做（最多 50 步）
+
+**多格式导出** — Remotion 渲染 MP4、OTIO、FCPXML 7 等专业格式
+
 **Shell 访问** — 内置沙盒化 shell（ffprobe、mediainfo 等），Agent 能自己探索媒体文件信息
 
 **本地文件访问** — 直接读取本地文件系统，不需要上传
+
+**多 LLM 支持** — Gemini 或任意 OpenAI 兼容 API（DeepSeek、Qwen、OpenRouter 等）
 
 ## 未来计划
 
@@ -118,20 +138,22 @@ pnpm dev:backend    # http://localhost:8000
 
 ## 待实现
 
+- [x] 图形化界面（三栏式：素材 | 预览+时间线 | 聊天）
+- [x] 多 LLM 支持（Gemini + OpenAI 兼容）
+- [x] Remotion 视频导出
+- [x] OTIO / FCPXML 导出
+- [x] 批量剪辑操作
+- [x] 时间线分割工具
+- [x] Agent 进度可视化
+- [x] 撤销/重做功能
+- [ ] WebGPU + WGSL 调色（RGB 曲线、HSL 调色）
+- [ ] 特效系统
+- [ ] 剪辑风格个性化（Prompt 模板）
+- [ ] 智能配乐（Artlist 集成）
+- [ ] 关键帧动画
+- [ ] 转场效果
 
-（已实现）一个比在黑色命令行里敲字要好一点的ui
-
-webgpu+WGSL：调色
-
-特效
-
-剪辑风格个性化
-
-（已实现了..吗？）当前timeline采用自定义json,添加json转为otio或FCPXML7（实际上因为otio压根没有对字幕的专属规定，我在导出到达芬奇和kdenlive的时候都遇到了字幕丢失问题，还有各种诡异的bug，在linux上用个剪辑软件真的是醉了）
-
-artlist寻找最符合描述风格的配乐
-
-SPEC.md 也记录了一些，不想再重复写了
+> **注意**：OTIO 对字幕支持有限，导出到 DaVinci Resolve / Kdenlive 时可能丢失字幕
 
 ## 这里记录一次重大决策变更
 
@@ -140,5 +162,3 @@ SPEC.md 也记录了一些，不想再重复写了
 在深入后才发现，timeline和诸如ACES才是剪辑得以存在的道理，timeline-free简直是倒反天罡
 
 所以在调研chatcut和nemovideo，以及开源的一些剪辑工具后，最后决定使用remotion+webgpu来做前端的timeline展示
-
-查看当前的timeline json文件，以当前的字幕轨道上存在的字幕片段为标准，保留有对应字幕的时间片段，删除没有对应字幕的片段

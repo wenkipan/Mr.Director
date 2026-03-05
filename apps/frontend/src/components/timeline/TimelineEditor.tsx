@@ -238,13 +238,20 @@ export default function TimelineEditor({
       const target = calcDropTarget(e);
       if (!target) return;
 
-      // Map media type to clip/track type
-      const clipType: 'video' | 'audio' = media.type === 'audio' ? 'audio' : 'video';
-
       // Find a compatible track: prefer the hovered track, otherwise find/create one
       let targetTrack = timeline.tracks[target.trackIndex];
       let targetTrackId = targetTrack.id;
       let updatedTimeline = timeline;
+
+      // Map media type to clip/track type
+      // Allow video media on audio tracks (extracts audio from video)
+      const isVideoOnAudioTrack = media.type === 'video' && targetTrack.type === 'audio';
+      let clipType: 'video' | 'audio';
+      if (isVideoOnAudioTrack) {
+        clipType = 'audio';
+      } else {
+        clipType = media.type === 'audio' ? 'audio' : 'video';
+      }
 
       if (targetTrack.type !== clipType) {
         // Try to find an existing compatible track
