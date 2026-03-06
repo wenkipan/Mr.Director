@@ -6,6 +6,12 @@ export async function fetchMediaList(dir: string) {
   return res.json();
 }
 
+export async function listProjects(): Promise<{ project_id: string; name: string }[]> {
+  const res = await fetch(`${API_BASE}/projects`);
+  if (!res.ok) throw new Error(`Failed to list projects: ${res.statusText}`);
+  return res.json();
+}
+
 export async function createProject(name: string = 'Untitled') {
   const res = await fetch(`${API_BASE}/projects`, {
     method: 'POST',

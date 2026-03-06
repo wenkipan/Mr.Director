@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useAppStore } from '../../stores/appStore';
-import { startExport, getExportStatus, exportInterchange, getGpuStatus, type GpuStatus } from '../../lib/api';
+import { listProjects, createProject, getProject, startExport, getExportStatus, exportInterchange, getGpuStatus, type GpuStatus } from '../../lib/api';
 import ExportProgressModal from './ExportProgressModal';
 
 type ExportStatus = 'idle' | 'queued' | 'rendering' | 'completed' | 'error';
@@ -13,7 +13,7 @@ interface ExportState {
 }
 
 export default function Toolbar() {
-  const { timeline, projectId } = useAppStore();
+  const { timeline, projectId, setProjectId, setTimeline, clearMessages } = useAppStore();
   const [exportState, setExportState] = useState<ExportState>({
     exportId: null,
     status: 'idle',
@@ -22,7 +22,10 @@ export default function Toolbar() {
   });
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [gpuStatus, setGpuStatus] = useState<GpuStatus | null>(null);
+  const [projectListOpen, setProjectListOpen] = useState(false);
+  const [projectList, setProjectList] = useState<{ project_id: string; name: string }[]>([]);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const projectDropdownRef = useRef<HTMLDivElement>(null);
 
   // Fetch GPU status on mount
   useEffect(() => {
@@ -31,17 +34,20 @@ export default function Toolbar() {
       .catch((err) => console.warn('GPU check failed:', err));
   }, []);
 
-  // Close dropdown on outside click
+  // Close dropdowns on outside click
   useEffect(() => {
-    if (!dropdownOpen) return;
+    if (!dropdownOpen && !projectListOpen) return;
     const handler = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+      if (dropdownOpen && dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setDropdownOpen(false);
+      }
+      if (projectListOpen && projectDropdownRef.current && !projectDropdownRef.current.contains(e.target as Node)) {
+        setProjectListOpen(false);
       }
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, [dropdownOpen]);
+  }, [dropdownOpen, projectListOpen]);
 
   // Listen for WebSocket export progress events
   useEffect(() => {
@@ -103,19 +109,99 @@ export default function Toolbar() {
     setExportState({ exportId: null, status: 'idle', progress: 0, error: null });
   }, []);
 
+  const handleToggleProjectList = useCallback(async () => {
+    if (projectListOpen) {
+      setProjectListOpen(false);
+      return;
+    }
+    try {
+      const list = await listProjects();
+      setProjectList(list);
+      setProjectListOpen(true);
+    } catch (e: any) {
+      console.error('Failed to list projects:', e);
+    }
+  }, [projectListOpen]);
+
+  const handleSwitchProject = useCallback(async (id: string) => {
+    setProjectListOpen(false);
+    if (id === projectId) return;
+    try {
+      const res = await getProject(id);
+      setProjectId(id);
+      setTimeline(res.timeline, res.version ?? 0);
+      clearMessages();
+    } catch (e: any) {
+      console.error('Failed to load project:', e);
+    }
+  }, [projectId, setProjectId, setTimeline, clearMessages]);
+
+  const handleNewProject = useCallback(async () => {
+    try {
+      const res = await createProject('Untitled');
+      setProjectId(res.project_id);
+      setTimeline(res.timeline, 0);
+      clearMessages();
+    } catch (e: any) {
+      console.error('Failed to create project:', e);
+    }
+  }, [setProjectId, setTimeline, clearMessages]);
+
   const hasContent = timeline && timeline.tracks.length > 0;
   const isExporting = exportState.status === 'queued' || exportState.status === 'rendering';
 
   return (
     <>
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-zinc-800 bg-zinc-900 shrink-0">
-        {/* Left: project name */}
-        <span className="text-sm font-medium text-zinc-400 truncate">
-          {timeline?.project.name ?? 'Untitled'}
-        </span>
+        {/* Left: project name (clickable to switch) */}
+        <div className="relative" ref={projectDropdownRef}>
+          <button
+            onClick={handleToggleProjectList}
+            className="text-sm font-medium text-zinc-400 truncate hover:text-zinc-200
+                       flex items-center gap-1 transition-colors"
+          >
+            {timeline?.project.name ?? 'Untitled'}
+            <svg className="h-3 w-3 shrink-0" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+            </svg>
+          </button>
+          {projectListOpen && (
+            <div className="absolute left-0 mt-1 w-56 max-h-64 overflow-y-auto rounded bg-zinc-800 border border-zinc-700 shadow-lg z-50 py-1">
+              {projectList.length === 0 ? (
+                <div className="px-3 py-1.5 text-xs text-zinc-500">No projects</div>
+              ) : (
+                projectList.map((p) => (
+                  <button
+                    key={p.project_id}
+                    onClick={() => handleSwitchProject(p.project_id)}
+                    className={`w-full text-left px-3 py-1.5 text-xs transition-colors truncate ${
+                      p.project_id === projectId
+                        ? 'text-blue-400 bg-zinc-700/50'
+                        : 'text-zinc-200 hover:bg-zinc-700'
+                    }`}
+                  >
+                    {p.name}
+                    <span className="ml-1.5 text-zinc-500">{p.project_id}</span>
+                  </button>
+                ))
+              )}
+            </div>
+          )}
+        </div>
 
-        {/* Right: GPU warning + export dropdown */}
+        {/* Right: New project + GPU warning + export dropdown */}
         <div className="flex items-center">
+          <button
+            onClick={handleNewProject}
+            className="px-3 py-1 text-xs font-medium rounded bg-zinc-700 text-zinc-200
+                       hover:bg-zinc-600 flex items-center gap-1.5 transition-colors mr-2"
+          >
+            <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            New
+          </button>
           {gpuStatus && !gpuStatus.gpu_available && (
             <div
               className="flex items-center gap-1 text-xs text-amber-400 mr-2 cursor-help"

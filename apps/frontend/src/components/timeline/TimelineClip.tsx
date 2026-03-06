@@ -1,7 +1,9 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 import type { Clip } from '@mrdv2/shared';
 import { TRACK_COLORS, CLIP_PADDING, TRIM_HANDLE_WIDTH } from './timelineConstants';
 import { hitTestClipRegion } from './timelineUtils';
+import AudioWaveform from './AudioWaveform';
+import { useAudioWaveform } from '../../hooks/useAudioWaveform';
 
 export type DragType = 'move' | 'trim-left' | 'trim-right';
 
@@ -20,6 +22,8 @@ interface TimelineClipProps {
   dragWidth: number | null;
   /** Transient left override during trim-left */
   dragLeft: number | null;
+  /** File path for audio media (used for waveform) */
+  mediaFilePath?: string;
   onSelect: (clipId: string, multi: boolean) => void;
   onDragStart: (clipId: string, type: DragType, pointerX: number) => void;
 }
@@ -36,11 +40,19 @@ export default function TimelineClip({
   dragOffsetPx,
   dragWidth,
   dragLeft,
+  mediaFilePath,
   onSelect,
   onDragStart,
 }: TimelineClipProps) {
   const clipRef = useRef<HTMLDivElement>(null);
   const color = TRACK_COLORS[trackType] || '#6b7280';
+
+  const isAudio = trackType === 'audio';
+  const mediaUrl = useMemo(
+    () => isAudio && mediaFilePath ? `/api/media/file?path=${encodeURIComponent(mediaFilePath)}` : null,
+    [isAudio, mediaFilePath],
+  );
+  const { audioData } = useAudioWaveform(mediaUrl);
 
   const actualLeft = dragLeft !== null ? dragLeft : left + dragOffsetPx;
   const actualWidth = dragWidth !== null ? dragWidth : width;
@@ -115,11 +127,26 @@ export default function TimelineClip({
         style={{ width: TRIM_HANDLE_WIDTH, cursor: 'col-resize' }}
       />
 
-      {/* Clip label */}
+      {/* Audio waveform */}
+      {isAudio && audioData && (
+        <AudioWaveform
+          audioData={audioData}
+          sourceInSec={clip.source_in_sec ?? 0}
+          sourceOutSec={clip.source_out_sec ?? 0}
+          width={actualWidth}
+          height={height}
+          color={color}
+        />
+      )}
+
+      {/* Clip label — bottom-anchored for audio, centered for others */}
       {actualWidth > 40 && (
         <div
-          className="px-1.5 text-white text-[10px] leading-none whitespace-nowrap overflow-hidden pointer-events-none"
-          style={{ lineHeight: `${height}px` }}
+          className={`px-1.5 text-white text-[10px] whitespace-nowrap overflow-hidden pointer-events-none ${isAudio ? 'absolute bottom-0 left-0 right-0' : ''}`}
+          style={isAudio
+            ? { lineHeight: '16px' }
+            : { lineHeight: `${height}px` }
+          }
         >
           {label}
         </div>

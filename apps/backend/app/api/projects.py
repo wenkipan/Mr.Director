@@ -17,6 +17,20 @@ def _projects_dir() -> Path:
     return d
 
 
+@router.get("")
+async def list_projects():
+    """List all projects with id and name."""
+    results = []
+    for f in sorted(_projects_dir().glob("proj_*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
+        try:
+            data = json.loads(f.read_text())
+            name = data.get("project", {}).get("name", "Untitled")
+            results.append({"project_id": f.stem, "name": name})
+        except (json.JSONDecodeError, OSError):
+            continue
+    return results
+
+
 @router.post("")
 async def create_project(name: str = "Untitled"):
     """Create a new empty project."""

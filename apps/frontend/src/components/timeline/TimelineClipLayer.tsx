@@ -45,11 +45,13 @@ export default function TimelineClipLayer({
 }: TimelineClipLayerProps) {
   const clipHeight = TRACK_HEIGHT - CLIP_PADDING * 2;
 
-  // Build a lookup map: media_id → display name (filename without extension)
+  // Build lookup maps: media_id → display name, media_id → file path
   const mediaNameMap = new Map<string, string>();
+  const mediaPathMap = new Map<string, string>();
   for (const asset of timeline.media_pool) {
     const fileName = asset.path.split('/').pop() || asset.path;
     mediaNameMap.set(asset.id, fileName);
+    mediaPathMap.set(asset.id, asset.path);
   }
 
   return (
@@ -80,6 +82,7 @@ export default function TimelineClipLayer({
               clip={clip}
               trackType={track.type}
               mediaName={clip.media_id ? mediaNameMap.get(clip.media_id) : undefined}
+              mediaFilePath={clip.media_id ? mediaPathMap.get(clip.media_id) : undefined}
               left={left}
               top={top}
               width={width}
