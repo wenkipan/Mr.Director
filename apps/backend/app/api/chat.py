@@ -2,55 +2,29 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from pathlib import Path
 
 from fastapi import APIRouter
 
 from app.agent.loop import ReActAgent
-from app.agent.state import AgentState
 from app.config import settings
 from app.models.messages import ChatRequest, ChatResponse
-from app.models.timeline import TimelineProject, migrate_project_data
-from app.services.ws_manager import ws_manager
+from app.services.timeline_manager import timeline_manager
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-
-# In-memory agent states per project (lost on restart — fine for MVP)
-_agent_states: dict[str, AgentState] = {}
-
-
-def get_or_create_state(project_id: str) -> AgentState:
-    """Get existing state or create one by loading from disk.
-
-    This is the SOLE entry point for accessing project state.
-    Once loaded, in-memory state is the source of truth.
-    Disk is only read on first access (cold start).
-    """
-    if project_id not in _agent_states:
-        state = AgentState(project_id=project_id)
-        # Load from disk only on first access
-        path = Path(settings.projects_dir) / f"{project_id}.json"
-        if path.exists():
-            try:
-                data = migrate_project_data(json.loads(path.read_text()))
-                state.current_timeline = TimelineProject(**data)
-            except Exception as e:
-                logger.warning(f"Failed to load timeline for {project_id}: {e}")
-        _agent_states[project_id] = state
-
-    return _agent_states[project_id]
 
 
 @router.post("/chat")
 async def chat_message(req: ChatRequest) -> ChatResponse:
     """Send a user message to the agent and get a response."""
-    state = get_or_create_state(req.project_id)
+    state = timeline_manager.get_state(req.project_id)
+
+    # Sync from disk so agent always sees latest frontend edits
+    timeline_manager.sync_from_disk(req.project_id)
 
     # If user mentions a directory, remember it as the media dir
-    # (simple heuristic — agent can also set this via tools)
     if not state.media_dir:
         for word in req.message.split():
             if word.startswith("/") and len(word) > 2:

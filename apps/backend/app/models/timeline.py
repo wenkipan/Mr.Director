@@ -34,7 +34,7 @@ class Clip(BaseModel):
     source_in_sec: float = 0
     source_out_sec: float | None = None
     timeline_start_sec: float
-    duration_sec: float
+    timeline_end_sec: float
     speed: float = 1.0
     subtitle_text: str | None = None
     subtitle_style: SubtitleStyle | None = None
@@ -83,6 +83,10 @@ def migrate_project_data(data: dict) -> dict:
         for clip in track.get("clips", []):
             if clip.get("type") == "text":
                 clip["type"] = "subtitle"
+            # Migrate duration_sec → timeline_end_sec
+            if "duration_sec" in clip and "timeline_end_sec" not in clip:
+                clip["timeline_end_sec"] = clip["timeline_start_sec"] + clip["duration_sec"]
+                del clip["duration_sec"]
             # Move text_content → subtitle_text
             if clip.get("text_content") and not clip.get("subtitle_text"):
                 clip["subtitle_text"] = clip.pop("text_content")

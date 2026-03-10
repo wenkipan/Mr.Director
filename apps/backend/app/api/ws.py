@@ -19,10 +19,10 @@ async def timeline_ws(websocket: WebSocket, project_id: str = "default"):
             try:
                 msg = json.loads(data)
                 if msg.get("type") == "abort_agent":
-                    from app.api.chat import get_or_create_state
+                    from app.services.timeline_manager import timeline_manager
 
                     target_project = msg.get("project_id", project_id)
-                    state = get_or_create_state(target_project)
+                    state = timeline_manager.get_state(target_project)
                     if state.agent_active:
                         state.abort_requested = True
                         logger.info(f"Abort requested for project {target_project}")

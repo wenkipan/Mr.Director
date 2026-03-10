@@ -49,7 +49,7 @@ export interface Clip {
   source_in_sec?: number;
   source_out_sec?: number;
   timeline_start_sec: number;
-  duration_sec: number;
+  timeline_end_sec: number;
   speed?: number;
   subtitle_text?: string;
   subtitle_style?: SubtitleStyle;

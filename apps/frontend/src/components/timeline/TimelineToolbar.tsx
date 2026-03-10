@@ -1,6 +1,6 @@
 import { useMemo, useCallback, useState, useRef, useEffect } from 'react';
 import type { TimelineProject } from '@mrdv2/shared';
-import { findClipById, splitClipInTimeline, generateClipId, addClipToTimeline, wouldOverlap, mergeClipsInTimeline } from './timelineUtils';
+import { findClipById, splitClipInTimeline, generateClipId, addClipToTimeline, wouldOverlap, mergeClipsInTimeline, findGapAtTime, removeGapOnTrack, removeGapAllTracks } from './timelineUtils';
 
 interface TimelineToolbarProps {
   timeline: TimelineProject;
@@ -22,8 +22,7 @@ export default function TimelineToolbar({
     const found = findClipById(timeline, clipId);
     if (!found) return false;
     const { clip } = found;
-    const clipEnd = clip.timeline_start_sec + clip.duration_sec;
-    return currentTime > clip.timeline_start_sec && currentTime < clipEnd;
+    return currentTime > clip.timeline_start_sec && currentTime < clip.timeline_end_sec;
   }, [selectedClipIds, timeline, currentTime]);
 
   const handleSplit = useCallback(() => {
@@ -65,7 +64,7 @@ export default function TimelineToolbar({
         id: generateClipId(),
         type: 'subtitle' as const,
         timeline_start_sec: currentTime,
-        duration_sec: 1,
+        timeline_end_sec: currentTime + 1,
         subtitle_text: 'Subtitle',
         speed: 1,
         source_in_sec: 0,
@@ -90,6 +89,51 @@ export default function TimelineToolbar({
       onTimelineChange(newTimeline);
     }
   }, [selectedClipIds, timeline, onTimelineChange]);
+
+  // ── Remove Gap ──
+  const [gapMenuOpen, setGapMenuOpen] = useState(false);
+  const gapMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!gapMenuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (gapMenuRef.current && !gapMenuRef.current.contains(e.target as Node)) {
+        setGapMenuOpen(false);
+      }
+    };
+    document.addEventListener('pointerdown', handler);
+    return () => document.removeEventListener('pointerdown', handler);
+  }, [gapMenuOpen]);
+
+  const gaps = useMemo(
+    () => findGapAtTime(timeline, currentTime),
+    [timeline, currentTime],
+  );
+  const canRemoveGap = gaps.length > 0;
+
+  const handleRemoveGap = useCallback(() => {
+    if (gaps.length === 0) return;
+    if (gaps.length === 1) {
+      const { trackId, gapStart, gapDuration } = gaps[0];
+      onTimelineChange(removeGapOnTrack(timeline, trackId, gapStart, gapDuration));
+    } else {
+      setGapMenuOpen((v) => !v);
+    }
+  }, [gaps, timeline, onTimelineChange]);
+
+  const handleRemoveGapForTrack = useCallback(
+    (trackIdOrAll: string) => {
+      setGapMenuOpen(false);
+      if (trackIdOrAll === 'ALL') {
+        onTimelineChange(removeGapAllTracks(timeline, currentTime, gaps));
+      } else {
+        const gap = gaps.find((g) => g.trackId === trackIdOrAll);
+        if (!gap) return;
+        onTimelineChange(removeGapOnTrack(timeline, gap.trackId, gap.gapStart, gap.gapDuration));
+      }
+    },
+    [gaps, timeline, currentTime, onTimelineChange],
+  );
 
   const handleAddSubtitle = useCallback(() => {
     if (subtitleTracks.length === 0) return;
@@ -204,6 +248,56 @@ export default function TimelineToolbar({
         </svg>
         Merge
       </button>
+
+      {/* Remove Gap */}
+      <div className="relative" ref={gapMenuRef}>
+        <button
+          onClick={handleRemoveGap}
+          disabled={!canRemoveGap}
+          title="Remove gap at playhead (Shift+Delete)"
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition-colors
+            disabled:opacity-40 disabled:cursor-not-allowed
+            enabled:hover:bg-zinc-700 enabled:text-zinc-200 text-zinc-400"
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            {/* Two inward-pointing arrows — ripple close */}
+            <polyline points="18 8 22 12 18 16" />
+            <polyline points="6 8 2 12 6 16" />
+            <line x1="2" y1="12" x2="10" y2="12" />
+            <line x1="14" y1="12" x2="22" y2="12" />
+          </svg>
+          Remove Gap
+        </button>
+
+        {gapMenuOpen && gaps.length > 1 && (
+          <div className="absolute bottom-full left-0 mb-1 bg-zinc-800 border border-zinc-700 rounded shadow-lg py-1 min-w-[140px] z-50">
+            <button
+              className="w-full text-left px-3 py-1 text-xs text-zinc-300 hover:bg-zinc-700 transition-colors border-b border-zinc-700"
+              onClick={() => handleRemoveGapForTrack('ALL')}
+            >
+              All Tracks
+            </button>
+            {gaps.map((g) => (
+              <button
+                key={g.trackId}
+                className="w-full text-left px-3 py-1 text-xs text-zinc-300 hover:bg-zinc-700 transition-colors"
+                onClick={() => handleRemoveGapForTrack(g.trackId)}
+              >
+                {g.trackName}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

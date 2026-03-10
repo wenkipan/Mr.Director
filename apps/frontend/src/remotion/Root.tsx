@@ -32,7 +32,7 @@ export const RemotionRoot: React.FC = () => {
         let maxEnd = 0;
         for (const track of tl.tracks) {
           for (const clip of track.clips) {
-            const clipEnd = clip.timeline_start_sec + clip.duration_sec;
+            const clipEnd = clip.timeline_end_sec;
             if (clipEnd > maxEnd) maxEnd = clipEnd;
           }
         }

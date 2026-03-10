@@ -4,12 +4,11 @@ from __future__ import annotations
 
 import json
 import logging
-from pathlib import Path
 
 from app.agent.state import AgentState
 from app.agent.prompt import build_system_prompt
-from app.config import settings
 from app.services.llm import get_provider
+from app.services.timeline_manager import timeline_manager
 from app.services.ws_manager import ws_manager
 from app.tools.registry import registry
 
@@ -26,7 +25,7 @@ import app.tools.time_mapping  # noqa: F401
 logger = logging.getLogger(__name__)
 
 MAX_ITERATIONS = 20
-TIMELINE_MODIFYING_TOOLS = {"create_timeline", "edit_clips", "split_timeline", "manage_timeline", "generate_subtitles"}
+TIMELINE_MODIFYING_TOOLS = {"create_timeline", "edit_clips", "split_timeline", "manage_timeline", "generate_subtitles", "remove_gap"}
 # Tools that require user interaction — agent loop must stop and return the message
 USER_FACING_TOOLS = {"ask_user", "present_plan"}
 
@@ -146,15 +145,9 @@ class ReActAgent:
                     "content": result,
                 })
 
-                # If timeline was modified, push update via WebSocket
+                # If timeline was modified, persist + broadcast via manager
                 if tc.name in TIMELINE_MODIFYING_TOOLS and state.current_timeline:
-                    version = state.bump_version()
-                    await ws_manager.broadcast_timeline(
-                        state.project_id,
-                        state.current_timeline.model_dump(),
-                        version=version,
-                    )
-                    _save_timeline(state)
+                    await timeline_manager.save_and_broadcast(state.project_id)
 
                 # Abort checkpoint 3: after tool execution
                 if state.abort_requested:
@@ -188,11 +181,3 @@ class ReActAgent:
         return "I've reached the maximum number of reasoning steps. Please try breaking your request into smaller parts."
 
 
-def _save_timeline(state: AgentState):
-    """Save current timeline to disk."""
-    if not state.current_timeline:
-        return
-    projects_dir = Path(settings.projects_dir)
-    projects_dir.mkdir(parents=True, exist_ok=True)
-    path = projects_dir / f"{state.project_id}.json"
-    path.write_text(state.current_timeline.model_dump_json(indent=2))

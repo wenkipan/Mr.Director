@@ -45,9 +45,9 @@ def _projects_dir() -> Path:
 
 
 def _load_timeline(project_id: str) -> TimelineProject:
-    from app.api.chat import get_or_create_state
+    from app.services.timeline_manager import timeline_manager
 
-    state = get_or_create_state(project_id)
+    state = timeline_manager.get_state(project_id)
     if state.current_timeline:
         if not state.current_timeline.tracks:
             raise HTTPException(status_code=400, detail="Timeline has no tracks to export")

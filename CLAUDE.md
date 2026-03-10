@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-MrDV2 (Mr.Director V2) is an AI-native video editing tool. Users describe edits in natural language, a ReAct Agent (Gemini-powered) analyzes media and generates a platform-independent Timeline JSON, which is rendered in-browser via Remotion and can be exported to FCPXML/OTIO.
+MrDV2 (Mr.Director V2) is an AI-native video editing tool. The core abstraction是 Timeline JSON——一个平台无关的剪辑描述，由 Remotion 在浏览器中渲染，可导出为 FCPXML/OTIO。
+
+**产品定位**：Timeline 是人和 Agent 共享的工作空间，而非一次性粗剪产物。Agent（Gemini-powered ReAct）通过工具操作 timeline 实现剪辑效果，用户也可以在 UI 上手动编辑同一条 timeline。这种抽象建模使人-Agent 协同成为可能——Agent 不是一锤子买卖的粗剪工具，而是持续参与编辑过程的协作者。设计决策应始终围绕"让人和 Agent 都能高效读写同一个 timeline"展开。
 
 ## Monorepo Structure
 
@@ -74,7 +76,7 @@ No test or lint commands are configured yet.
 
 Defined in `packages/shared/schemas/timeline.schema.json`. Key rules:
 - All times in **seconds** (float)
-- `duration_sec = (source_out_sec - source_in_sec) / speed`
+- `timeline_end_sec = timeline_start_sec + (source_out_sec - source_in_sec) / speed` (auto-computed for media clips)
 - Media must exist in `media_pool` before being referenced in clips
 - Clips cannot overlap on the same track
 - Track types: `video`, `audio`, `subtitle`

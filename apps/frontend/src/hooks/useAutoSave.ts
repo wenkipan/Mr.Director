@@ -9,13 +9,10 @@ import { updateTimeline } from '../lib/api';
  */
 export function useAutoSave(debounceMs: number = 1000) {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { timeline, projectId, timelineDirty, setTimelineDirty, agentProgress } = useAppStore();
+  const { timeline, projectId, timelineDirty, setTimelineDirty } = useAppStore();
 
   useEffect(() => {
     if (!timelineDirty || !projectId || !timeline) return;
-
-    // Don't auto-save while agent is modifying the timeline
-    if (agentProgress.isActive) return;
 
     if (timerRef.current) clearTimeout(timerRef.current);
 
@@ -41,5 +38,5 @@ export function useAutoSave(debounceMs: number = 1000) {
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [timelineDirty, timeline, projectId, debounceMs, setTimelineDirty, agentProgress.isActive]);
+  }, [timelineDirty, timeline, projectId, debounceMs, setTimelineDirty]);
 }

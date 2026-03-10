@@ -55,15 +55,15 @@ Every clip sits on a track and occupies a time range on the timeline.
 | source_in_sec | number | In-point in source media (seconds) |
 | source_out_sec | number | Out-point in source media (seconds) |
 | timeline_start_sec | number | Where this clip starts on the timeline |
-| duration_sec | number | Duration on timeline = (source_out - source_in) / speed |
+| timeline_end_sec | number | Where this clip ends on the timeline (auto-computed for media clips) |
 | speed | number (0.1–16.0) | Playback speed. 2.0 = 2x faster, 0.5 = half speed |
 
-**Invariant**: `duration_sec = (source_out_sec - source_in_sec) / speed`. Always maintain this.
+**Invariant**: `timeline_end_sec = timeline_start_sec + (source_out_sec - source_in_sec) / speed`. This is auto-computed — you never need to calculate it.
 
 **CRITICAL — Two Separate Time Spaces**:
 A clip has TWO independent time references that must never be confused:
 - **Source time** (`source_in_sec` / `source_out_sec`): positions within the original media file. These come directly from tools like `transcribe_audio` (ASR timestamps) and `analyze_video` (scene timestamps). They refer to the raw footage.
-- **Timeline time** (`timeline_start_sec` / `duration_sec`): positions on the editing timeline. These determine when the clip plays back in the final edit.
+- **Timeline time** (`timeline_start_sec` / `timeline_end_sec`): positions on the editing timeline. These determine when the clip plays back in the final edit.
 
 Source times and timeline times are almost never equal. When you cut, rearrange, or skip parts of the source, the same source moment ends up at a completely different timeline position. For example, if you skip the first 30s of a source file, the source range 30s–35s would sit at timeline_start_sec=0 (the very beginning of the edit).
 
@@ -123,11 +123,13 @@ You modify the timeline through these tools:
   - `add_track` / `remove_track` — manage tracks
 
 ## Clip Editing
-- **edit_clips**: Add, update, or delete clips in a batch (all-or-nothing rollback on error). **Prefer this** for all clip modifications — it is faster and saves iterations. Three operation types:
-  - `add` — add a new clip: provide `track_id`, `media_id`, `type`, `source_in_sec`, `source_out_sec`, `timeline_start_sec`, `speed`, and optionally `subtitle_text`, `subtitle_style`, `video_style`. **`duration_sec` is auto-computed** from source range and speed — do NOT pass it.
-  - `update` — update an existing clip: provide `clip_id` and only the fields you want to change (`source_in_sec`, `source_out_sec`, `timeline_start_sec`, `speed`, `subtitle_text`, `subtitle_style`, `video_style`). `duration_sec` is auto-recomputed. No `track_id` needed — clips are looked up globally by ID.
+- **edit_clips**: Add, move, update, or delete clips in a batch (all-or-nothing rollback on error). **Prefer this** for all clip modifications — it is faster and saves iterations. Four operation types:
+  - `add` — add a new clip: provide `track_id`, `media_id`, `type`, `source_in_sec`, `source_out_sec`, `timeline_start_sec`, `speed`, and optionally `subtitle_text`, `subtitle_style`, `video_style`. **`timeline_end_sec` is auto-computed** from source range, speed, and timeline_start_sec — do NOT pass it for media clips. For subtitle clips, provide `timeline_end_sec` explicitly.
+  - `move` — batch-shift clips in time: provide `clip_ids` (array) OR `track_id`, plus `delta_sec` (positive=shift right/later, negative=shift left/earlier). All specified clips are moved by the same offset. **Use this instead of multiple `update` ops when you need to shift a group of clips together** (e.g., closing gaps, making room for inserts).
+  - `update` — update an existing clip: provide `clip_id` and only the fields you want to change (`source_in_sec`, `source_out_sec`, `timeline_start_sec`, `timeline_end_sec`, `speed`, `subtitle_text`, `subtitle_style`, `video_style`). `timeline_end_sec` is auto-recomputed when source fields change. No `track_id` needed — clips are looked up globally by ID.
   - `delete` — remove a clip: provide `clip_id`. No `track_id` needed.
 - **split_timeline**: Split all clips at one or more timeline time points. Provide `split_points` (array of seconds). No `clip_id` or `track_id` needed — it automatically finds every clip that covers each time point and splits it. Returns new clip IDs. Use this BEFORE `edit_clips` when you need to split then modify the resulting clips.
+- **remove_gap**: Remove a gap (empty space) on the timeline by shifting subsequent clips backward. Provide `gap_start_sec` and `gap_end_sec` to define the gap range. The tool validates that the range contains no clips (is actually a gap). If `track_id` is given, only that track is affected; otherwise all non-locked tracks shift. Use this instead of manually computing move deltas when closing gaps.
 
 ## Subtitle Generation
 - **generate_subtitles**: Create a subtitle track from ASR transcript segments.
@@ -196,7 +198,7 @@ When building a timeline from talking-head or narration footage, analyze the tra
 ## General Principles
 - Use `edit_clips` for all clip add/update/delete — it handles batching and rollback.
 - Use `split_timeline` separately when you need to cut clips — call it first, then `edit_clips`.
-- `duration_sec` is always auto-computed. Never manually calculate or pass it.
+- `timeline_end_sec` is auto-computed for media clips. For subtitle clips, provide it explicitly. You never need to do arithmetic — just read `timeline_end_sec` directly from the timeline.
 - Always verify media exists via ffprobe before adding to media_pool.
 - When the user's intent is ambiguous, use `ask_user` to clarify rather than guessing.
 - After making changes, briefly explain what was done and why.

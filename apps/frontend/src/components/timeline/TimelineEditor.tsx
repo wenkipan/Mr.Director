@@ -23,6 +23,9 @@ import {
   addClipToTimeline,
   addTrackToTimeline,
   generateTrackId,
+  findGapAtTime,
+  removeGapOnTrack,
+  removeGapAllTracks,
 } from './timelineUtils';
 
 interface TimelineEditorProps {
@@ -279,14 +282,15 @@ export default function TimelineEditor({
       const defaultDuration = 5;
       const isImageMedia = media.type === 'image';
 
+      const timelineStart = Math.max(0, target.timeSec);
       const clip = {
         id: generateClipId(),
         type: clipType,
         media_id: mediaId,
         source_in_sec: 0,
         ...(isImageMedia ? {} : { source_out_sec: defaultDuration }),
-        timeline_start_sec: Math.max(0, target.timeSec),
-        duration_sec: defaultDuration,
+        timeline_start_sec: timelineStart,
+        timeline_end_sec: timelineStart + defaultDuration,
         speed: 1,
       };
 
@@ -308,6 +312,19 @@ export default function TimelineEditor({
 
     const handleKeyDown = (e: KeyboardEvent) => {
       const isModKey = e.ctrlKey || e.metaKey;
+
+      // Shift+Delete: remove gap at playhead
+      if (e.key === 'Delete' && e.shiftKey && !isModKey) {
+        e.preventDefault();
+        const gaps = findGapAtTime(timeline, currentTime);
+        if (gaps.length === 1) {
+          const { trackId, gapStart, gapDuration } = gaps[0];
+          onTimelineChange(removeGapOnTrack(timeline, trackId, gapStart, gapDuration));
+        } else if (gaps.length > 1) {
+          onTimelineChange(removeGapAllTracks(timeline, currentTime, gaps));
+        }
+        return;
+      }
 
       if ((e.key === 'Delete' || e.key === 'Backspace') && selectedClipIds.size > 0) {
         e.preventDefault();
@@ -344,7 +361,7 @@ export default function TimelineEditor({
 
     el.addEventListener('keydown', handleKeyDown);
     return () => el.removeEventListener('keydown', handleKeyDown);
-  }, [selectedClipIds, timeline, onTimelineChange, clearSelection]);
+  }, [selectedClipIds, timeline, currentTime, onTimelineChange, clearSelection]);
 
   return (
     <div

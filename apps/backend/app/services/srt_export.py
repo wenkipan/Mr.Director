@@ -37,7 +37,7 @@ def extract_subtitles(timeline: TimelineProject) -> list[SrtEntry]:
             if clip.subtitle_text:
                 entries.append(SrtEntry(
                     start_sec=clip.timeline_start_sec,
-                    end_sec=clip.timeline_start_sec + clip.duration_sec,
+                    end_sec=clip.timeline_end_sec,
                     text=clip.subtitle_text,
                 ))
     entries.sort(key=lambda e: e.start_sec)

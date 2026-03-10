@@ -74,9 +74,9 @@ export interface Clip {
    */
   timeline_start_sec: number;
   /**
-   * Duration on the timeline after speed adjustment
+   * Where this clip ends on the timeline (seconds)
    */
-  duration_sec: number;
+  timeline_end_sec: number;
   /**
    * Playback speed multiplier. 2.0 = 2x faster
    */

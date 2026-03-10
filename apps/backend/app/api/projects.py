@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException
 
 from app.config import settings
 from app.models.timeline import TimelineProject, migrate_project_data
-from app.services.ws_manager import ws_manager
+from app.services.timeline_manager import timeline_manager
 
 router = APIRouter()
 
@@ -35,26 +35,23 @@ async def list_projects():
 async def create_project(name: str = "Untitled"):
     """Create a new empty project."""
     project_id = f"proj_{int.from_bytes(os.urandom(4), 'big')}"
-    timeline = TimelineProject(
+    tl = TimelineProject(
         version="1.0.0",
         project={"name": name, "width": 1920, "height": 1080, "fps": 30},
         media_pool=[],
         tracks=[],
     )
-    path = _projects_dir() / f"{project_id}.json"
-    path.write_text(timeline.model_dump_json(indent=2))
-    return {"project_id": project_id, "timeline": timeline.model_dump()}
+    timeline_manager.create_project(project_id, tl)
+    return {"project_id": project_id, "timeline": tl.model_dump()}
 
 
 @router.get("/{project_id}")
 async def get_project(project_id: str):
-    """Get current Timeline JSON for a project.
+    """Get current Timeline JSON for a project."""
+    if not timeline_manager.project_exists(project_id):
+        raise HTTPException(status_code=404, detail=f"Project not found: {project_id}")
 
-    Reads from in-memory state if available, falls back to disk.
-    """
-    from app.api.chat import get_or_create_state
-
-    state = get_or_create_state(project_id)
+    state = timeline_manager.get_state(project_id)
     if state.current_timeline:
         return {
             "project_id": project_id,
@@ -62,10 +59,9 @@ async def get_project(project_id: str):
             "version": state.version,
         }
 
-    # Fallback: disk only (project exists but has no timeline in memory yet)
+    # Fallback: disk only (project exists but not yet loaded — shouldn't happen
+    # since get_state loads from disk, but just in case)
     path = _projects_dir() / f"{project_id}.json"
-    if not path.exists():
-        raise HTTPException(status_code=404, detail=f"Project not found: {project_id}")
     data = migrate_project_data(json.loads(path.read_text()))
     return {"project_id": project_id, "timeline": data, "version": 0}
 
@@ -74,33 +70,18 @@ async def get_project(project_id: str):
 async def update_timeline(project_id: str, timeline: TimelineProject):
     """Update Timeline JSON for a project.
 
-    Routes through in-memory state to prevent dual-writer conflicts.
+    Routes through TimelineManager to prevent dual-writer conflicts.
     Rejects updates while the agent is actively processing.
     """
-    from app.api.chat import get_or_create_state
-
-    path = _projects_dir() / f"{project_id}.json"
-    if not path.exists():
+    if not timeline_manager.project_exists(project_id):
         raise HTTPException(status_code=404, detail=f"Project not found: {project_id}")
 
-    state = get_or_create_state(project_id)
-
-    if state.agent_active:
+    try:
+        version = await timeline_manager.update_from_frontend(project_id, timeline)
+    except ValueError:
         raise HTTPException(
             status_code=409,
             detail="Agent is currently modifying the timeline. Please wait.",
         )
-
-    # Update in-memory state (single source of truth)
-    state.current_timeline = timeline
-    version = state.bump_version()
-
-    # Persist to disk
-    path.write_text(timeline.model_dump_json(indent=2))
-
-    # Broadcast to all connected clients
-    await ws_manager.broadcast_timeline(
-        project_id, timeline.model_dump(), version=version,
-    )
 
     return {"project_id": project_id, "version": version}

@@ -4,6 +4,7 @@ import { useAppStore } from '../../stores/appStore';
 import { findClipById, updateClipInTimeline } from '../timeline/timelineUtils';
 import SubtitleClipEditor from './editors/SubtitleClipEditor';
 import VideoClipEditor from './editors/VideoClipEditor';
+import SpeedControl from './editors/SpeedControl';
 import type { Clip, TimelineProject } from '@mrdv2/shared';
 
 export default function ClipPropertiesEditor() {
@@ -31,6 +32,35 @@ export default function ClipPropertiesEditor() {
     (updates: Partial<Clip>) => {
       if (!timeline || selectedClipIds.size !== 1) return;
       const clipId = [...selectedClipIds][0];
+
+      // Speed change: recompute timeline_end_sec and clamp to avoid overlap
+      if (updates.speed !== undefined) {
+        const found = findClipById(timeline, clipId);
+        if (found) {
+          const { clip } = found;
+          const sourceIn = clip.source_in_sec ?? 0;
+          const sourceOut = clip.source_out_sec;
+          if (sourceOut != null) {
+            let newSpeed = updates.speed;
+            let newEnd = clip.timeline_start_sec + (sourceOut - sourceIn) / newSpeed;
+
+            // Collision check: find next clip on same track
+            const track = timeline.tracks[found.trackIndex];
+            const nextClip = track.clips
+              .filter((c) => c.id !== clipId && c.timeline_start_sec >= clip.timeline_end_sec)
+              .sort((a, b) => a.timeline_start_sec - b.timeline_start_sec)[0];
+
+            if (nextClip && newEnd > nextClip.timeline_start_sec) {
+              const maxDuration = nextClip.timeline_start_sec - clip.timeline_start_sec;
+              newSpeed = (sourceOut - sourceIn) / maxDuration;
+              newSpeed = Math.ceil(newSpeed * 100) / 100; // round up to avoid float overlap
+              newEnd = clip.timeline_start_sec + (sourceOut - sourceIn) / newSpeed;
+            }
+
+            updates = { ...updates, speed: newSpeed, timeline_end_sec: newEnd };
+          }
+        }
+      }
 
       // Capture undo snapshot at the start of an editing session
       if (!undoSnapshotRef.current) {
@@ -121,8 +151,8 @@ export default function ClipPropertiesEditor() {
         {clip.type === 'video' && (
           <VideoClipEditor clip={clip} onUpdate={handleClipUpdate} />
         )}
-        {clip.type === 'audio' && (
-          <div className="text-zinc-500 text-xs">No editable properties for audio clips.</div>
+        {clip.type === 'audio' && clip.source_in_sec != null && clip.source_out_sec != null && (
+          <SpeedControl clip={clip} onSpeedChange={(v) => handleClipUpdate({ speed: v })} />
         )}
       </div>
     </div>

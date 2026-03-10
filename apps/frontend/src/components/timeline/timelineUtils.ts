@@ -1,6 +1,16 @@
 import type { Clip, Track, MediaAsset, TimelineProject } from '@mrdv2/shared';
 import { TRIM_HANDLE_WIDTH, MIN_CLIP_DURATION_SEC } from './timelineConstants';
 
+const GAP_EPSILON = 1e-6;
+
+/** Info about a gap on one track at a given time */
+export interface GapInfo {
+  trackId: string;
+  trackName: string;
+  gapStart: number;
+  gapDuration: number;
+}
+
 /** Convert pixel offset to timeline seconds */
 export function pxToSec(px: number, pixelsPerSec: number): number {
   return px / pixelsPerSec;
@@ -23,7 +33,7 @@ export function wouldOverlap(
   for (const c of trackClips) {
     if (c.id === clipId) continue;
     if (excludeIds?.has(c.id)) continue;
-    const cEnd = c.timeline_start_sec + c.duration_sec;
+    const cEnd = c.timeline_end_sec;
     if (newStart < cEnd && newEnd > c.timeline_start_sec) {
       return true;
     }
@@ -44,7 +54,7 @@ export function collectClipEdges(
     for (const clip of track.clips) {
       if (excludeSet?.has(clip.id)) continue;
       edges.push(clip.timeline_start_sec);
-      edges.push(clip.timeline_start_sec + clip.duration_sec);
+      edges.push(clip.timeline_end_sec);
     }
   }
   return edges;
@@ -88,7 +98,7 @@ export function calcTotalDuration(timeline: TimelineProject): number {
   let max = 1;
   for (const track of timeline.tracks) {
     for (const clip of track.clips) {
-      const end = clip.timeline_start_sec + clip.duration_sec;
+      const end = clip.timeline_end_sec;
       if (end > max) max = end;
     }
   }
@@ -258,8 +268,7 @@ export function mergeClipsInTimeline(
       : [found2.clip, found1.clip];
 
   // Must be precisely adjacent
-  const firstEnd = first.timeline_start_sec + first.duration_sec;
-  if (firstEnd !== second.timeline_start_sec) return null;
+  if (first.timeline_end_sec !== second.timeline_start_sec) return null;
 
   // Must be same type
   if (first.type !== second.type) return null;
@@ -275,7 +284,7 @@ export function mergeClipsInTimeline(
   // Build merged clip (inherit from first)
   const merged: Clip = {
     ...first,
-    duration_sec: first.duration_sec + second.duration_sec,
+    timeline_end_sec: second.timeline_end_sec,
   };
 
   if (first.type === 'video' || first.type === 'audio') {
@@ -316,10 +325,9 @@ export function splitClipInTimeline(
   if (!found) return null;
 
   const { clip, trackIndex } = found;
-  const clipEnd = clip.timeline_start_sec + clip.duration_sec;
 
   // splitAtSec must be strictly inside the clip
-  if (splitAtSec <= clip.timeline_start_sec || splitAtSec >= clipEnd) return null;
+  if (splitAtSec <= clip.timeline_start_sec || splitAtSec >= clip.timeline_end_sec) return null;
 
   const offsetInClip = splitAtSec - clip.timeline_start_sec;
   const speed = clip.speed ?? 1;
@@ -328,7 +336,7 @@ export function splitClipInTimeline(
   const clip1: Clip = {
     ...clip,
     id: generateClipId(),
-    duration_sec: offsetInClip,
+    timeline_end_sec: splitAtSec,
     source_out_sec: sourceSplit,
   };
 
@@ -336,7 +344,7 @@ export function splitClipInTimeline(
     ...clip,
     id: generateClipId(),
     timeline_start_sec: splitAtSec,
-    duration_sec: clip.duration_sec - offsetInClip,
+    timeline_end_sec: clip.timeline_end_sec,
     source_in_sec: sourceSplit,
   };
 
@@ -350,5 +358,109 @@ export function splitClipInTimeline(
           }
         : track,
     ),
+  };
+}
+
+/** Find gaps at the given time across all non-locked tracks */
+export function findGapAtTime(
+  timeline: TimelineProject,
+  currentTime: number,
+): GapInfo[] {
+  const result: GapInfo[] = [];
+  for (const track of timeline.tracks) {
+    if (track.locked) continue;
+    if (track.clips.length === 0) continue;
+    const sorted = [...track.clips].sort(
+      (a, b) => a.timeline_start_sec - b.timeline_start_sec,
+    );
+    // Gap before first clip
+    const first = sorted[0];
+    if (
+      first.timeline_start_sec > GAP_EPSILON &&
+      currentTime >= GAP_EPSILON &&
+      currentTime <= first.timeline_start_sec + GAP_EPSILON
+    ) {
+      result.push({
+        trackId: track.id,
+        trackName: track.name ?? track.id,
+        gapStart: 0,
+        gapDuration: first.timeline_start_sec,
+      });
+      continue;
+    }
+    // Gaps between consecutive clips
+    for (let i = 0; i < sorted.length - 1; i++) {
+      const gapStart = sorted[i].timeline_end_sec;
+      const gapEnd = sorted[i + 1].timeline_start_sec;
+      if (gapEnd - gapStart <= GAP_EPSILON) continue;
+      if (
+        currentTime >= gapStart - GAP_EPSILON &&
+        currentTime <= gapEnd + GAP_EPSILON
+      ) {
+        result.push({
+          trackId: track.id,
+          trackName: track.name ?? track.id,
+          gapStart,
+          gapDuration: gapEnd - gapStart,
+        });
+        break;
+      }
+    }
+  }
+  return result;
+}
+
+/** Remove a gap on a single track by shifting all clips after gapStart backward */
+export function removeGapOnTrack(
+  timeline: TimelineProject,
+  trackId: string,
+  gapStart: number,
+  gapDuration: number,
+): TimelineProject {
+  return {
+    ...timeline,
+    tracks: timeline.tracks.map((track) => {
+      if (track.id !== trackId) return track;
+      return {
+        ...track,
+        clips: track.clips.map((clip) => {
+          if (clip.timeline_start_sec < gapStart + GAP_EPSILON) return clip;
+          return {
+            ...clip,
+            timeline_start_sec: clip.timeline_start_sec - gapDuration,
+            timeline_end_sec: clip.timeline_end_sec - gapDuration,
+          };
+        }),
+      };
+    }),
+  };
+}
+
+/** Remove gaps on all tracks by shifting clips after currentTime by the minimum gap duration */
+export function removeGapAllTracks(
+  timeline: TimelineProject,
+  currentTime: number,
+  gaps: GapInfo[],
+): TimelineProject {
+  if (gaps.length === 0) return timeline;
+  const shiftAmount = Math.min(...gaps.map((g) => g.gapDuration));
+  return {
+    ...timeline,
+    tracks: timeline.tracks.map((track) => {
+      if (track.locked) return track;
+      return {
+        ...track,
+        clips: track.clips.map((clip) => {
+          if (clip.timeline_start_sec < currentTime - GAP_EPSILON) return clip;
+          const newStart = Math.max(0, clip.timeline_start_sec - shiftAmount);
+          const newEnd = newStart + (clip.timeline_end_sec - clip.timeline_start_sec);
+          return {
+            ...clip,
+            timeline_start_sec: newStart,
+            timeline_end_sec: newEnd,
+          };
+        }),
+      };
+    }),
   };
 }

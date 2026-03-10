@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { Clip, VideoStyle } from '@mrdv2/shared';
+import SpeedControl from './SpeedControl';
 
 interface VideoClipEditorProps {
   clip: Clip;
@@ -58,6 +59,11 @@ export default function VideoClipEditor({ clip, onUpdate }: VideoClipEditorProps
 
   return (
     <div className="space-y-4">
+      {/* Speed — only for media clips with source range */}
+      {clip.source_in_sec != null && clip.source_out_sec != null && (
+        <SpeedControl clip={clip} onSpeedChange={(v) => onUpdate({ speed: v })} />
+      )}
+
       {/* Position */}
       <fieldset>
         <legend className="text-xs font-medium text-zinc-300 mb-2">Position</legend>

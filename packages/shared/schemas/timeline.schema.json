@@ -70,7 +70,7 @@
     },
     "Clip": {
       "type": "object",
-      "required": ["id", "type", "timeline_start_sec", "duration_sec"],
+      "required": ["id", "type", "timeline_start_sec", "timeline_end_sec"],
       "properties": {
         "id": { "type": "string" },
         "type": { "type": "string", "enum": ["video", "audio", "subtitle"] },
@@ -91,9 +91,9 @@
           "type": "number",
           "description": "Where this clip is placed on the timeline (seconds)"
         },
-        "duration_sec": {
+        "timeline_end_sec": {
           "type": "number",
-          "description": "Duration on the timeline after speed adjustment"
+          "description": "Where this clip ends on the timeline (seconds)"
         },
         "speed": {
           "type": "number",

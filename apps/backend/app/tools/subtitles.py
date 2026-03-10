@@ -69,7 +69,7 @@ async def generate_subtitles(args: dict, state) -> dict:
             id=f"sub_{uuid.uuid4().hex[:8]}",
             type="subtitle",
             timeline_start_sec=start,
-            duration_sec=end - start,
+            timeline_end_sec=end,
             subtitle_text=text,
         )
         sub_track.clips.append(clip)

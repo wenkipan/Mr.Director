@@ -32,7 +32,7 @@ export function calculateTotalFrames(timeline: TimelineProject): number {
   let maxEnd = 0;
   for (const track of timeline.tracks) {
     for (const clip of track.clips) {
-      const clipEnd = clip.timeline_start_sec + clip.duration_sec;
+      const clipEnd = clip.timeline_end_sec;
       if (clipEnd > maxEnd) maxEnd = clipEnd;
     }
   }
@@ -51,7 +51,7 @@ export function timelineToEditorData(timeline: TimelineProject) {
     actions: track.clips.map((clip) => ({
       id: clip.id,
       start: clip.timeline_start_sec,
-      end: clip.timeline_start_sec + clip.duration_sec,
+      end: clip.timeline_end_sec,
       effectId: `${track.type}_effect`,
       data: { clip, trackType: track.type },
     })),

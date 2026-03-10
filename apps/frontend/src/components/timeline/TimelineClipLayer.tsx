@@ -69,7 +69,7 @@ export default function TimelineClipLayer({
         track.clips.map((clip) => {
           const left = HEADER_WIDTH + clip.timeline_start_sec * pixelsPerSec;
           const top = RULER_HEIGHT + trackIndex * TRACK_HEIGHT + CLIP_PADDING - scrollTop;
-          const width = clip.duration_sec * pixelsPerSec;
+          const width = (clip.timeline_end_sec - clip.timeline_start_sec) * pixelsPerSec;
           const isDragging = dragState?.clipId === clip.id;
           const isMoving = dragState?.dragType === 'move' && (
             isDragging ||

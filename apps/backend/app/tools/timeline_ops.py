@@ -35,12 +35,13 @@ def _find_clip_global(timeline: TimelineProject, clip_id: str) -> tuple[Track, C
     return None
 
 
-def _recompute_duration(clip: Clip) -> None:
-    """Recompute duration_sec from source range and speed."""
+def _recompute_end(clip: Clip) -> None:
+    """Recompute timeline_end_sec from source range, speed, and timeline_start_sec."""
     source_in = clip.source_in_sec or 0
     source_out = clip.source_out_sec
     if source_out is not None:
-        clip.duration_sec = (source_out - source_in) / (clip.speed or 1.0)
+        duration = (source_out - source_in) / (clip.speed or 1.0)
+        clip.timeline_end_sec = clip.timeline_start_sec + duration
 
 
 def _parse_json_arg(raw, field_name: str = "arg") -> tuple[object, dict | None]:
@@ -130,7 +131,7 @@ async def create_timeline(args: dict, state) -> dict:
                 clips = []
                 for c in clips_raw:
                     clip = Clip(**c)
-                    _recompute_duration(clip)
+                    _recompute_end(clip)
                     clips.append(clip)
                 tracks.append(Track(**t, clips=clips))
         except Exception as e:
@@ -245,7 +246,7 @@ def _exec_add(timeline: TimelineProject, op: dict) -> dict:
         "source_in_sec": source_in,
         "source_out_sec": source_out,
         "timeline_start_sec": timeline_start,
-        "duration_sec": 0,  # will be recomputed
+        "timeline_end_sec": timeline_start,  # will be recomputed
         "speed": speed,
     }
     # Optional fields
@@ -254,7 +255,7 @@ def _exec_add(timeline: TimelineProject, op: dict) -> dict:
             clip_data[key] = op[key]
 
     clip = Clip(**clip_data)
-    _recompute_duration(clip)
+    _recompute_end(clip)
     track.clips.append(clip)
     track.clips.sort(key=lambda c: c.timeline_start_sec)
     return {"success": True, "clip": clip.model_dump()}
@@ -274,7 +275,7 @@ def _exec_update(timeline: TimelineProject, op: dict) -> dict:
     track, clip = found
 
     # Updatable scalar fields
-    SCALAR_FIELDS = {"source_in_sec", "source_out_sec", "timeline_start_sec", "speed"}
+    SCALAR_FIELDS = {"source_in_sec", "source_out_sec", "timeline_start_sec", "timeline_end_sec", "speed"}
     for field in SCALAR_FIELDS:
         if field in op:
             setattr(clip, field, float(op[field]) if op[field] is not None else None)
@@ -291,7 +292,7 @@ def _exec_update(timeline: TimelineProject, op: dict) -> dict:
         style = op["video_style"]
         clip.video_style = VideoStyle(**style) if isinstance(style, dict) else style
 
-    _recompute_duration(clip)
+    _recompute_end(clip)
     track.clips.sort(key=lambda c: c.timeline_start_sec)
     return {"success": True, "clip": clip.model_dump()}
 
@@ -310,19 +311,73 @@ def _exec_delete(timeline: TimelineProject, op: dict) -> dict:
     return {"success": True, "deleted_clip": clip_id}
 
 
+def _exec_move(timeline: TimelineProject, op: dict) -> dict:
+    """Batch-move clips by a time offset. Accepts clip_ids or track_id."""
+    delta = op.get("delta_sec")
+    if delta is None:
+        return {"error": "move: missing delta_sec"}
+    delta = float(delta)
+
+    clip_ids = op.get("clip_ids")
+    track_id = op.get("track_id")
+
+    if not clip_ids and not track_id:
+        return {"error": "move: must provide clip_ids or track_id"}
+
+    # Collect target clips
+    targets: list[tuple[Track, Clip]] = []
+    if clip_ids:
+        for cid in clip_ids:
+            found = _find_clip_global(timeline, cid)
+            if not found:
+                return {"error": f"move: clip not found: {cid}"}
+            targets.append(found)
+    else:
+        track = _find_track(timeline, track_id)
+        if not track:
+            return {"error": f"move: track not found: {track_id}"}
+        targets = [(track, clip) for clip in track.clips]
+
+    if not targets:
+        return {"error": "move: no clips to move"}
+
+    # Check no clip goes negative
+    for _, clip in targets:
+        new_start = clip.timeline_start_sec + delta
+        if new_start < 0:
+            return {"error": f"move: clip {clip.id} would start at {new_start:.3f}s (< 0)"}
+
+    # Apply
+    moved = []
+    affected_tracks: set[str] = set()
+    for track, clip in targets:
+        clip.timeline_start_sec += delta
+        clip.timeline_end_sec += delta
+        moved.append(clip.id)
+        affected_tracks.add(track.id)
+
+    # Re-sort affected tracks
+    for track in timeline.tracks:
+        if track.id in affected_tracks:
+            track.clips.sort(key=lambda c: c.timeline_start_sec)
+
+    return {"success": True, "moved_clips": moved, "delta_sec": delta}
+
+
 _OP_DISPATCH = {
     "add": _exec_add,
     "update": _exec_update,
     "delete": _exec_delete,
+    "move": _exec_move,
 }
 
 
 @registry.register(
     name="edit_clips",
-    description="Add, update, or delete clips in a batch. Operations are applied sequentially; "
+    description="Add, move, update, or delete clips in a batch. Operations are applied sequentially; "
     "on error all changes are rolled back. "
     "Do NOT include split here — use split_timeline separately. "
-    "duration_sec is auto-computed from source_in_sec, source_out_sec, and speed; do not pass it.",
+    "timeline_end_sec is auto-computed from source_in_sec, source_out_sec, speed, and timeline_start_sec; do not pass it for media clips.",
     parameters={
         "type": "OBJECT",
         "properties": {
@@ -330,7 +385,11 @@ _OP_DISPATCH = {
                 "type": "STRING",
                 "description": "JSON array of operations. Each object must have an 'op' field: "
                 "'add' — {op: 'add', track_id, type?, media_id?, source_in_sec, source_out_sec, timeline_start_sec, speed?, subtitle_text?, subtitle_style?, video_style?}. "
-                "'update' — {op: 'update', clip_id, source_in_sec?, source_out_sec?, timeline_start_sec?, speed?, subtitle_text?, subtitle_style?, video_style?}. "
+                "timeline_end_sec is auto-computed for media clips. For subtitle clips provide timeline_end_sec explicitly. "
+                "'move' — {op: 'move', clip_ids?: [string], track_id?: string, delta_sec: number}. "
+                "Batch-shift clips by delta_sec (positive=right, negative=left). "
+                "Provide clip_ids for specific clips, or track_id to move all clips on that track. "
+                "'update' — {op: 'update', clip_id, source_in_sec?, source_out_sec?, timeline_start_sec?, timeline_end_sec?, speed?, subtitle_text?, subtitle_style?, video_style?}. "
                 "'delete' — {op: 'delete', clip_id}.",
             },
         },
@@ -429,6 +488,119 @@ async def split_timeline(args: dict, state) -> dict:
     return {"success": True, "results": all_splits}
 
 
+GAP_EPSILON = 1e-6
+
+
+def _find_gap_on_track(track: Track, gap_start: float, gap_end: float) -> str | None:
+    """Verify that [gap_start, gap_end] is a real gap on the track.
+    Returns an error message if it's not a gap, or None if valid."""
+    if gap_end - gap_start <= GAP_EPSILON:
+        return f"gap duration too small: {gap_end - gap_start:.6f}s"
+    sorted_clips = sorted(track.clips, key=lambda c: c.timeline_start_sec)
+    for clip in sorted_clips:
+        # A clip overlaps the gap if clip_start < gap_end and clip_end > gap_start
+        if clip.timeline_start_sec < gap_end - GAP_EPSILON and clip.timeline_end_sec > gap_start + GAP_EPSILON:
+            return f"clip '{clip.id}' overlaps the specified gap [{gap_start:.3f}, {gap_end:.3f}]"
+    return None
+
+
+@registry.register(
+    name="remove_gap",
+    description="Remove a gap (empty space) on the timeline by shifting all clips after the gap backward. "
+    "Validates that the specified range is actually a gap (contains no clips). "
+    "If track_id is given, only that track is affected. "
+    "If track_id is omitted, all non-locked tracks are affected: clips after gap_start_sec shift backward by gap_duration on every track.",
+    parameters={
+        "type": "OBJECT",
+        "properties": {
+            "gap_start_sec": {
+                "type": "NUMBER",
+                "description": "Start time of the gap in seconds.",
+            },
+            "gap_end_sec": {
+                "type": "NUMBER",
+                "description": "End time of the gap in seconds.",
+            },
+            "track_id": {
+                "type": "STRING",
+                "description": "Optional. If provided, only remove the gap on this track. "
+                "If omitted, all non-locked tracks are affected.",
+            },
+        },
+        "required": ["gap_start_sec", "gap_end_sec"],
+    },
+)
+async def remove_gap(args: dict, state) -> dict:
+    if not state.current_timeline:
+        return {"error": "No timeline exists. Use create_timeline first."}
+
+    gap_start = float(args["gap_start_sec"])
+    gap_end = float(args["gap_end_sec"])
+    track_id = args.get("track_id")
+    gap_duration = gap_end - gap_start
+
+    if gap_duration <= GAP_EPSILON:
+        return {"error": f"Invalid gap: gap_end_sec ({gap_end}) must be greater than gap_start_sec ({gap_start})"}
+
+    timeline = state.current_timeline
+    snapshot = deepcopy(timeline)
+
+    if track_id:
+        # Single track mode
+        track = _find_track(timeline, track_id)
+        if not track:
+            return {"error": f"Track not found: {track_id}"}
+        if track.locked:
+            return {"error": f"Track '{track_id}' is locked"}
+
+        err = _find_gap_on_track(track, gap_start, gap_end)
+        if err:
+            state.current_timeline = snapshot
+            return {"error": f"Not a valid gap on track '{track_id}': {err}"}
+
+        moved = []
+        for clip in track.clips:
+            if clip.timeline_start_sec >= gap_start + GAP_EPSILON:
+                clip.timeline_start_sec -= gap_duration
+                clip.timeline_end_sec -= gap_duration
+                moved.append(clip.id)
+        track.clips.sort(key=lambda c: c.timeline_start_sec)
+
+        return {"success": True, "track_id": track_id, "gap_removed_sec": gap_duration, "moved_clips": moved}
+    else:
+        # All tracks mode: validate gap exists on at least one track, then shift all non-locked tracks
+        has_gap = False
+        for track in timeline.tracks:
+            if track.locked or len(track.clips) == 0:
+                continue
+            err = _find_gap_on_track(track, gap_start, gap_end)
+            if err is None:
+                has_gap = True
+            elif err and "overlaps" in err:
+                # Track has a clip in this range — that's fine, it just means this track has no gap here
+                pass
+
+        if not has_gap:
+            state.current_timeline = snapshot
+            return {"error": f"No track has a valid gap at [{gap_start:.3f}, {gap_end:.3f}]"}
+
+        moved_all = {}
+        for track in timeline.tracks:
+            if track.locked:
+                continue
+            moved = []
+            for clip in track.clips:
+                if clip.timeline_start_sec >= gap_start + GAP_EPSILON:
+                    clip.timeline_start_sec -= gap_duration
+                    clip.timeline_end_sec -= gap_duration
+                    moved.append(clip.id)
+            track.clips.sort(key=lambda c: c.timeline_start_sec)
+            if moved:
+                moved_all[track.id] = moved
+
+        return {"success": True, "mode": "all_tracks", "gap_removed_sec": gap_duration, "moved_clips": moved_all}
+
+
 def _split_at_time(timeline: TimelineProject, split_at: float, track_id: str | None = None) -> list[dict]:
     """Split clips covering the given timeline time. If track_id is set, only that track is affected."""
     results = []
@@ -440,8 +612,7 @@ def _split_at_time(timeline: TimelineProject, split_at: float, track_id: str | N
     for track in tracks:
         # Collect clips to split (iterate over a copy since we modify the list)
         for clip in list(track.clips):
-            clip_end = clip.timeline_start_sec + clip.duration_sec
-            if clip.timeline_start_sec < split_at < clip_end:
+            if clip.timeline_start_sec < split_at < clip.timeline_end_sec:
                 # Perform split
                 offset = split_at - clip.timeline_start_sec
                 speed = clip.speed or 1.0
@@ -450,13 +621,14 @@ def _split_at_time(timeline: TimelineProject, split_at: float, track_id: str | N
                 clip1 = deepcopy(clip)
                 clip1.id = _gen_id("clip")
                 clip1.source_out_sec = source_split
-                _recompute_duration(clip1)
+                clip1.timeline_end_sec = split_at
+                _recompute_end(clip1)
 
                 clip2 = deepcopy(clip)
                 clip2.id = _gen_id("clip")
                 clip2.timeline_start_sec = split_at
                 clip2.source_in_sec = source_split
-                _recompute_duration(clip2)
+                _recompute_end(clip2)
 
                 idx = track.clips.index(clip)
                 track.clips[idx:idx + 1] = [clip1, clip2]

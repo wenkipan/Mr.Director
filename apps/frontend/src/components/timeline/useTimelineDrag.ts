@@ -128,7 +128,7 @@ export function useTimelineDrag(
             clipId: id,
             trackId: f.trackId,
             originalStart: f.clip.timeline_start_sec,
-            duration: f.clip.duration_sec,
+            duration: f.clip.timeline_end_sec - f.clip.timeline_start_sec,
             trackClips: t.clips,
           });
         }
@@ -181,10 +181,11 @@ export function useTimelineDrag(
         onSnapGuideFn(snapStart.snappedTime);
       } else {
         // Try snapping end edge
-        const newEnd = newStart + d.originalClip.duration_sec;
+        const origDuration = d.originalClip.timeline_end_sec - d.originalClip.timeline_start_sec;
+        const newEnd = newStart + origDuration;
         const snapEnd = computeSnap(newEnd);
         if (snapEnd.didSnap) {
-          newStart = snapEnd.snappedTime - d.originalClip.duration_sec;
+          newStart = snapEnd.snappedTime - origDuration;
           onSnapGuideFn(snapEnd.snappedTime);
         } else {
           onSnapGuideFn(null);
@@ -206,7 +207,7 @@ export function useTimelineDrag(
         ? new Set([d.clipId, ...d.multiClips.map((mc) => mc.clipId)])
         : undefined;
 
-      if (wouldOverlap(d.clipId, newStart, d.originalClip.duration_sec, d.trackClips, excludeIds)) {
+      if (wouldOverlap(d.clipId, newStart, d.originalClip.timeline_end_sec - d.originalClip.timeline_start_sec, d.trackClips, excludeIds)) {
         return;
       }
 
@@ -233,8 +234,9 @@ export function useTimelineDrag(
     } else if (d.dragType === 'trim-left') {
       const orig = d.originalClip;
       const speed = orig.speed ?? 1;
+      const origDuration = orig.timeline_end_sec - orig.timeline_start_sec;
       const origSourceIn = orig.source_in_sec ?? 0;
-      const origSourceOut = orig.source_out_sec ?? origSourceIn + orig.duration_sec * speed;
+      const origSourceOut = orig.source_out_sec ?? origSourceIn + origDuration * speed;
 
       let newSourceIn = origSourceIn + deltaSec * speed;
       newSourceIn = clamp(newSourceIn, 0, origSourceOut - MIN_CLIP_DURATION_SEC * speed);
@@ -272,8 +274,9 @@ export function useTimelineDrag(
     } else if (d.dragType === 'trim-right') {
       const orig = d.originalClip;
       const speed = orig.speed ?? 1;
+      const origDuration = orig.timeline_end_sec - orig.timeline_start_sec;
       const origSourceIn = orig.source_in_sec ?? 0;
-      const origSourceOut = orig.source_out_sec ?? origSourceIn + orig.duration_sec * speed;
+      const origSourceOut = orig.source_out_sec ?? origSourceIn + origDuration * speed;
 
       let newSourceOut = origSourceOut + deltaSec * speed;
       const minOut = origSourceIn + MIN_CLIP_DURATION_SEC * speed;
@@ -325,26 +328,31 @@ export function useTimelineDrag(
       if (d.dragType === 'move') {
         const deltaSec = pxToSec(vs.offsetPx, d.pixelsPerSec);
         const newStart = Math.max(0, orig.timeline_start_sec + deltaSec);
+        const origDuration = orig.timeline_end_sec - orig.timeline_start_sec;
         newTimeline = updateClipInTimeline(tl, d.clipId, {
           timeline_start_sec: newStart,
+          timeline_end_sec: newStart + origDuration,
         });
         // Apply same delta to secondary clips
         if (d.isMultiMove) {
           const effectiveDelta = newStart - orig.timeline_start_sec;
           for (const mc of d.multiClips) {
+            const mcNewStart = Math.max(0, mc.originalStart + effectiveDelta);
             newTimeline = updateClipInTimeline(newTimeline, mc.clipId, {
-              timeline_start_sec: Math.max(0, mc.originalStart + effectiveDelta),
+              timeline_start_sec: mcNewStart,
+              timeline_end_sec: mcNewStart + mc.duration,
             });
           }
         }
       } else if (d.dragType === 'trim-left' && vs.leftPx !== null && vs.widthPx !== null) {
         const newStart = pxToSec(vs.leftPx - HEADER_WIDTH, d.pixelsPerSec);
         const newDuration = pxToSec(vs.widthPx, d.pixelsPerSec);
-        const origSourceOut = orig.source_out_sec ?? (orig.source_in_sec ?? 0) + orig.duration_sec * speed;
+        const origDuration = orig.timeline_end_sec - orig.timeline_start_sec;
+        const origSourceOut = orig.source_out_sec ?? (orig.source_in_sec ?? 0) + origDuration * speed;
         const newSourceIn = origSourceOut - newDuration * speed;
         newTimeline = updateClipInTimeline(tl, d.clipId, {
           timeline_start_sec: newStart,
-          duration_sec: newDuration,
+          timeline_end_sec: newStart + newDuration,
           source_in_sec: Math.max(0, newSourceIn),
         });
       } else if (d.dragType === 'trim-right' && vs.widthPx !== null) {
@@ -352,7 +360,7 @@ export function useTimelineDrag(
         const origSourceIn = orig.source_in_sec ?? 0;
         const newSourceOut = origSourceIn + newDuration * speed;
         newTimeline = updateClipInTimeline(tl, d.clipId, {
-          duration_sec: newDuration,
+          timeline_end_sec: orig.timeline_start_sec + newDuration,
           source_out_sec: newSourceOut,
         });
       }

@@ -62,13 +62,13 @@ def _build_source_range(clip: Clip, rate: float) -> ot.TimeRange:
 
     source_in_sec  -> start_time
     source duration = source_out_sec - source_in_sec  (if available)
-                    = duration_sec * speed             (otherwise, undo speed)
+                    = (timeline_end - timeline_start) * speed  (otherwise, undo speed)
     """
     start_time = _sec_to_rt(clip.source_in_sec, rate)
     if clip.source_out_sec is not None:
         source_dur = clip.source_out_sec - clip.source_in_sec
     else:
-        source_dur = clip.duration_sec * clip.speed
+        source_dur = (clip.timeline_end_sec - clip.timeline_start_sec) * clip.speed
     duration = _sec_to_rt(source_dur, rate)
     return ot.TimeRange(start_time=start_time, duration=duration)
 
@@ -138,7 +138,7 @@ def _convert_track(
             )
 
         otio_track.append(otio_clip)
-        current_time = clip.timeline_start_sec + clip.duration_sec
+        current_time = clip.timeline_end_sec
 
     return otio_track
 
@@ -202,7 +202,7 @@ def _convert_subtitle_track(
         )
 
         otio_track.append(otio_clip)
-        current_time = clip.timeline_start_sec + clip.duration_sec
+        current_time = clip.timeline_end_sec
 
     return otio_track
 

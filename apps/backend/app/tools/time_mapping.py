@@ -13,14 +13,11 @@ from app.tools.registry import registry
 # ──────────────────────────────────────────────
 
 
-def _clip_timeline_end(clip: Clip) -> float:
-    return clip.timeline_start_sec + clip.duration_sec
-
-
 def _clip_source_out(clip: Clip) -> float:
     if clip.source_out_sec is not None:
         return clip.source_out_sec
-    return (clip.source_in_sec or 0) + clip.duration_sec * (clip.speed or 1.0)
+    duration = clip.timeline_end_sec - clip.timeline_start_sec
+    return (clip.source_in_sec or 0) + duration * (clip.speed or 1.0)
 
 
 def _media_path_by_id(timeline: TimelineProject, media_id: str) -> str | None:
@@ -75,7 +72,7 @@ def map_point_timeline_to_source(
     results = []
     for track in _get_tracks(timeline, track_id):
         for clip in track.clips:
-            clip_end = _clip_timeline_end(clip)
+            clip_end = clip.timeline_end_sec
             if clip.timeline_start_sec <= time_sec < clip_end:
                 speed = clip.speed or 1.0
                 source_in = clip.source_in_sec or 0
@@ -108,7 +105,7 @@ def map_range_timeline_to_source(
     for track in _get_tracks(timeline, track_id):
         for clip in track.clips:
             clip_start = clip.timeline_start_sec
-            clip_end = _clip_timeline_end(clip)
+            clip_end = clip.timeline_end_sec
 
             if start_sec < clip_end and end_sec > clip_start:
                 speed = clip.speed or 1.0

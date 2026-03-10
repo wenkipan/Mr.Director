@@ -177,7 +177,7 @@ export const TimelineComposition: React.FC<TimelineCompositionProps> = ({ timeli
           ? null
           : track.clips.map((clip) => {
               const startFrame = Math.round(clip.timeline_start_sec * fps);
-              const endFrame = Math.round((clip.timeline_start_sec + clip.duration_sec) * fps);
+              const endFrame = Math.round(clip.timeline_end_sec * fps);
               const durationFrames = endFrame - startFrame;
               const mediaUrl = clip.media_id
                 ? resolveMediaUrl(clip.media_id, timeline)
@@ -208,7 +208,7 @@ export const TimelineComposition: React.FC<TimelineCompositionProps> = ({ timeli
           ? null
           : track.clips.map((clip) => {
               const startFrame = Math.round(clip.timeline_start_sec * fps);
-              const endFrame = Math.round((clip.timeline_start_sec + clip.duration_sec) * fps);
+              const endFrame = Math.round(clip.timeline_end_sec * fps);
               const durationFrames = endFrame - startFrame;
               const mediaUrl = clip.media_id
                 ? resolveMediaUrl(clip.media_id, timeline)
@@ -238,7 +238,7 @@ export const TimelineComposition: React.FC<TimelineCompositionProps> = ({ timeli
           ? null
           : track.clips.map((clip) => {
               const startFrame = Math.round(clip.timeline_start_sec * fps);
-              const endFrame = Math.round((clip.timeline_start_sec + clip.duration_sec) * fps);
+              const endFrame = Math.round(clip.timeline_end_sec * fps);
               const durationFrames = endFrame - startFrame;
 
               if (durationFrames < 1) return null;
