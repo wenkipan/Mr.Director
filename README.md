@@ -39,10 +39,9 @@ Agent 会用 Gemini 看懂视频画面，再用本地 Whisper 把语音一句一
 
 ## quicklook
 
-![描述文字](docs/image.png) 
+![alt text](docs/image6.png)
 ![描述文字](docs/image2.png) 
 ![描述文字](docs/image4.png) 
-
 ## 跑起来
 
 ### 环境要求

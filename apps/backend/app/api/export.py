@@ -12,6 +12,7 @@ from app.models.timeline import TimelineProject, migrate_project_data
 from app.services.export_jobs import create_job, get_job
 from app.services.gpu_check import check_gpu
 from app.services.remotion_export import run_remotion_export
+from app.services.ffmpeg_export import run_ffmpeg_export
 from app.services.otio_export import export_otio_file
 from app.services.fcpxml_export import export_fcpxml_file
 from app.services.srt_export import generate_srt_string
@@ -28,7 +29,7 @@ _MIME_TYPES: dict[str, str] = {
 
 class ExportRequest(BaseModel):
     project_id: str
-    format: str = "mp4"  # mp4 (Remotion), otio, fcpxml
+    format: str = "mp4"  # mp4 (Remotion), h264 (FFmpeg), otio, fcpxml
     include_srt: bool = True
 
 
@@ -86,7 +87,9 @@ async def gpu_status():
 
 @router.post("")
 async def start_export(req: ExportRequest):
-    """Start an export. OTIO/FCPXML return files directly; MP4 uses async job."""
+    """Start an export. OTIO/FCPXML return files directly; MP4/h264 uses async job."""
+    if req.format not in ("mp4", "h264", "otio", "fcpxml"):
+        raise HTTPException(status_code=422, detail=f"Unsupported format: {req.format!r}")
     timeline = _load_timeline(req.project_id)
     export_id = f"exp_{int.from_bytes(os.urandom(4), 'big')}"
     exports_dir = _exports_dir()
@@ -125,7 +128,11 @@ async def start_export(req: ExportRequest):
     # ── Async video export ────────────────────────────────────
     output_path = str(exports_dir / f"{export_id}.mp4")
     job = create_job(export_id, req.project_id, output_path)
-    asyncio.create_task(run_remotion_export(export_id, req.project_id, timeline, output_path))
+
+    if req.format == "h264":
+        asyncio.create_task(run_ffmpeg_export(export_id, req.project_id, timeline, output_path))
+    else:
+        asyncio.create_task(run_remotion_export(export_id, req.project_id, timeline, output_path))
 
     return {"export_id": export_id, "status": job.status}
 

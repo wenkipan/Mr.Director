@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     projects_dir: str = "./projects"
     exports_dir: str = "./projects/exports"
     export_gl: str = "auto"  # auto | angle-egl | swangle | egl | vulkan
+    ffmpeg_path: str = ""  # empty = auto-detect from PATH
+    ffmpeg_max_inputs: int = 20
     cors_origins: list[str] = ["http://localhost:5173"]
     host: str = "0.0.0.0"
     port: int = 8000

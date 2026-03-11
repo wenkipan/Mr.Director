@@ -63,7 +63,7 @@ My answer: **local-first, privacy-first, sky-high ceiling, open-source and contr
 
 ## UI Preview
 
-![UI Screenshot](docs/image.png)
+![alt text](docs/image6.png)
 ![Timeline Editing](docs/image2.png)
 ![Export Feature](docs/image4.png)
 
