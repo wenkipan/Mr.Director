@@ -345,7 +345,11 @@ async def run_ffmpeg_export(
         ass_path = generate_ass(timeline, f"{tmp_dir}/subtitles.ass")
 
         # ── Validate input count ─────────────────────────────
-        total_clips = sum(len(t.clips) for t in timeline.tracks if not t.muted)
+        # Subtitle tracks use ASS burn-in and don't consume FFmpeg inputs
+        total_clips = sum(
+            len(t.clips) for t in timeline.tracks
+            if not t.muted and t.type != "subtitle"
+        )
         if total_clips > settings.ffmpeg_max_inputs:
             raise ValueError(
                 f"Too many clips ({total_clips}). "
@@ -376,13 +380,43 @@ async def run_ffmpeg_export(
 
         logger.info("FFmpeg command: %s", " ".join(cmd))
 
-        # ── Run FFmpeg ───────────────────────────────────────
+        # ── Compute total duration for progress ──────────────
+        total_dur = 0.0
+        for track in timeline.tracks:
+            for clip in track.clips:
+                total_dur = max(total_dur, clip.timeline_end_sec)
+
+        # ── Run FFmpeg with real-time stderr progress ─────────
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        _, stderr = await proc.communicate()
+
+        stderr_lines: list[bytes] = []
+        last_broadcast = 0.0
+
+        async def _read_stderr():
+            nonlocal last_broadcast
+            import re
+            time_re = re.compile(rb"time=(\d+):(\d+):(\d+)\.(\d+)")
+            assert proc.stderr is not None
+            async for line in proc.stderr:
+                stderr_lines.append(line)
+                m = time_re.search(line)
+                if m and total_dur > 0:
+                    h, mi, s, cs = (int(x) for x in m.groups())
+                    elapsed = h * 3600 + mi * 60 + s + int(cs) / 100
+                    progress = min(elapsed / total_dur, 0.99)
+                    if progress - last_broadcast >= 0.02:  # broadcast every ~2%
+                        last_broadcast = progress
+                        update_job(export_id, progress=progress)
+                        await ws_manager.broadcast_export_progress(
+                            project_id, export_id, progress, "rendering"
+                        )
+
+        await asyncio.gather(proc.wait(), _read_stderr())
+        stderr = b"".join(stderr_lines)
 
         if proc.returncode != 0:
             detail = stderr.decode(errors="replace")[-800:]

@@ -79,16 +79,16 @@ export default function Toolbar() {
       } catch {
         // WebSocket will handle updates
       }
-    }, 2000);
+    }, 10000);
     return () => clearInterval(interval);
   }, [exportState.exportId, exportState.status]);
 
-  const handleExportMp4 = useCallback(async () => {
+  const handleExportMp4 = useCallback(async (format: string = 'mp4') => {
     if (!projectId) return;
     setDropdownOpen(false);
     setExportState({ exportId: null, status: 'queued', progress: 0, error: null });
     try {
-      const data = await startExport(projectId);
+      const data = await startExport(projectId, format);
       setExportState({ exportId: data.export_id, status: 'rendering', progress: 0, error: null });
     } catch (e: any) {
       setExportState({ exportId: null, status: 'error', progress: 0, error: e.message || 'Failed to start export' });
@@ -217,7 +217,7 @@ export default function Toolbar() {
           <div className="flex items-center">
             {/* Main export button (MP4) */}
             <button
-              onClick={handleExportMp4}
+              onClick={() => handleExportMp4()}
               disabled={!hasContent || isExporting}
               className="px-3 py-1 text-xs font-medium rounded-l bg-blue-600 text-white
                          hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed
@@ -259,13 +259,20 @@ export default function Toolbar() {
 
           {/* Dropdown menu */}
           {dropdownOpen && (
-            <div className="absolute right-0 mt-1 w-44 rounded bg-zinc-800 border border-zinc-700 shadow-lg z-50 py-1">
+            <div className="absolute right-0 mt-1 w-48 rounded bg-zinc-800 border border-zinc-700 shadow-lg z-50 py-1">
               <button
-                onClick={handleExportMp4}
+                onClick={() => handleExportMp4('mp4')}
                 className="w-full text-left px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-700 transition-colors"
               >
-                Export MP4
+                Export MP4 (Remotion)
               </button>
+              <button
+                onClick={() => handleExportMp4('h264')}
+                className="w-full text-left px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-700 transition-colors"
+              >
+                Export MP4 (FFmpeg)
+              </button>
+              <div className="my-1 border-t border-zinc-700" />
               <button
                 onClick={() => handleExportInterchange('otio')}
                 className="w-full text-left px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-700 transition-colors"

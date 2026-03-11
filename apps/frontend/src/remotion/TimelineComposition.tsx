@@ -150,7 +150,6 @@ const VideoClipRenderer: React.FC<{
         src={mediaUrl}
         startFrom={Math.round((clip.source_in_sec ?? 0) * fps)}
         playbackRate={clip.speed ?? 1}
-        volume={0}
         style={videoStyle}
       />
     </div>

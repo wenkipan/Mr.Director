@@ -47,10 +47,10 @@ export default function TimelineClip({
   const clipRef = useRef<HTMLDivElement>(null);
   const color = TRACK_COLORS[trackType] || '#6b7280';
 
-  const isAudio = trackType === 'audio';
+  const showWaveform = trackType === 'audio' || trackType === 'video';
   const mediaUrl = useMemo(
-    () => isAudio && mediaFilePath ? `/api/media/file?path=${encodeURIComponent(mediaFilePath)}` : null,
-    [isAudio, mediaFilePath],
+    () => showWaveform && mediaFilePath ? `/api/media/file?path=${encodeURIComponent(mediaFilePath)}` : null,
+    [showWaveform, mediaFilePath],
   );
   const { audioData } = useAudioWaveform(mediaUrl);
 
@@ -127,8 +127,8 @@ export default function TimelineClip({
         style={{ width: TRIM_HANDLE_WIDTH, cursor: 'col-resize' }}
       />
 
-      {/* Audio waveform */}
-      {isAudio && audioData && (
+      {/* Audio waveform (shown on audio and video tracks) */}
+      {showWaveform && audioData && (
         <AudioWaveform
           audioData={audioData}
           sourceInSec={clip.source_in_sec ?? 0}
@@ -139,11 +139,11 @@ export default function TimelineClip({
         />
       )}
 
-      {/* Clip label — bottom-anchored for audio, centered for others */}
+      {/* Clip label — bottom-anchored when waveform is shown, centered for others */}
       {actualWidth > 40 && (
         <div
-          className={`px-1.5 text-white text-[10px] whitespace-nowrap overflow-hidden pointer-events-none ${isAudio ? 'absolute bottom-0 left-0 right-0' : ''}`}
-          style={isAudio
+          className={`px-1.5 text-white text-[10px] whitespace-nowrap overflow-hidden pointer-events-none ${audioData ? 'absolute bottom-0 left-0 right-0' : ''}`}
+          style={audioData
             ? { lineHeight: '16px' }
             : { lineHeight: `${height}px` }
           }
