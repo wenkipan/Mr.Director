@@ -85,10 +85,17 @@ export interface Clip {
    * For subtitle clips - the text content to display
    */
   subtitle_text?: string;
+  /**
+   * Reference to a subtitle style preset name (e.g. 'default'). Required for subtitle clips.
+   */
+  subtitle_style_ref?: string;
   subtitle_style?: SubtitleStyle;
   video_style?: VideoStyle;
   [k: string]: unknown;
 }
+/**
+ * Per-clip style overrides. Only set fields override the preset; unset fields inherit from the referenced preset.
+ */
 export interface SubtitleStyle {
   /**
    * Horizontal center position as fraction of frame width (0=left, 1=right)
@@ -100,11 +107,45 @@ export interface SubtitleStyle {
   position_y?: number;
   font_family?: string;
   font_size?: number;
+  /**
+   * Text color (hex or CSS color)
+   */
   color?: string;
+  /**
+   * Background color (rgba/hex/keywords)
+   */
   background?: string;
   text_align?: 'left' | 'center' | 'right';
   bold?: boolean;
   italic?: boolean;
+  /**
+   * Text outline/stroke color
+   */
+  outline_color?: string;
+  /**
+   * Text outline/stroke width in pixels
+   */
+  outline_width?: number;
+  /**
+   * CSS text-shadow value, e.g. '2px 2px 4px rgba(0,0,0,0.5)'
+   */
+  shadow?: string;
+  /**
+   * CSS padding value, e.g. '4px 16px'
+   */
+  padding?: string;
+  /**
+   * Background border radius in pixels
+   */
+  border_radius?: number;
+  /**
+   * Overall opacity (0=transparent, 1=opaque)
+   */
+  opacity?: number;
+  /**
+   * Letter spacing in pixels
+   */
+  letter_spacing?: number;
   [k: string]: unknown;
 }
 /**

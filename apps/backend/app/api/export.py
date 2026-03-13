@@ -3,6 +3,8 @@ import json
 import os
 from pathlib import Path
 
+from typing import Literal
+
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -31,6 +33,7 @@ class ExportRequest(BaseModel):
     project_id: str
     format: str = "mp4"  # mp4 (Remotion), h264 (FFmpeg), otio, fcpxml
     include_srt: bool = True
+    subtitle_burn_in: Literal["ass", "srt", "none"] = "ass"
 
 
 def _exports_dir() -> Path:
@@ -130,7 +133,7 @@ async def start_export(req: ExportRequest):
     job = create_job(export_id, req.project_id, output_path)
 
     if req.format == "h264":
-        asyncio.create_task(run_ffmpeg_export(export_id, req.project_id, timeline, output_path))
+        asyncio.create_task(run_ffmpeg_export(export_id, req.project_id, timeline, output_path, req.subtitle_burn_in))
     else:
         asyncio.create_task(run_remotion_export(export_id, req.project_id, timeline, output_path))
 

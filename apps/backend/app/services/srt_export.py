@@ -2,6 +2,7 @@
 
 import logging
 from dataclasses import dataclass
+from pathlib import Path
 
 from app.models.timeline import TimelineProject
 
@@ -42,6 +43,15 @@ def extract_subtitles(timeline: TimelineProject) -> list[SrtEntry]:
                 ))
     entries.sort(key=lambda e: e.start_sec)
     return entries
+
+
+def write_srt_file(timeline: TimelineProject, output_path: str) -> str | None:
+    """Write SRT subtitle file to disk. Returns output_path if subtitles exist, else None."""
+    content = generate_srt_string(timeline)
+    if not content:
+        return None
+    Path(output_path).write_text(content, encoding="utf-8")
+    return output_path
 
 
 def generate_srt_string(timeline: TimelineProject) -> str | None:

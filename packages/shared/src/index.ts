@@ -26,6 +26,48 @@ export interface SubtitleStyle {
   text_align?: 'left' | 'center' | 'right';
   bold?: boolean;
   italic?: boolean;
+  outline_color?: string;
+  outline_width?: number;
+  shadow?: string;
+  padding?: string;
+  border_radius?: number;
+  opacity?: number;
+  letter_spacing?: number;
+}
+
+export const DEFAULT_SUBTITLE_STYLE: Required<SubtitleStyle> = {
+  position_x: 0.5,
+  position_y: 0.85,
+  font_family: 'sans-serif',
+  font_size: 48,
+  color: '#FFFFFF',
+  background: 'rgba(0,0,0,0.6)',
+  text_align: 'center',
+  bold: false,
+  italic: false,
+  outline_color: 'transparent',
+  outline_width: 0,
+  shadow: 'none',
+  padding: '4px 16px',
+  border_radius: 4,
+  opacity: 1,
+  letter_spacing: 0,
+};
+
+/** Merge preset base with per-clip overrides. Non-undefined override fields win. */
+export function resolveSubtitleStyle(
+  preset: SubtitleStyle,
+  override?: SubtitleStyle | null,
+): Required<SubtitleStyle> {
+  const base = { ...DEFAULT_SUBTITLE_STYLE, ...preset };
+  if (override) {
+    for (const [key, value] of Object.entries(override)) {
+      if (value !== undefined && value !== null) {
+        (base as Record<string, unknown>)[key] = value;
+      }
+    }
+  }
+  return base;
 }
 
 export interface VideoStyle {
@@ -52,6 +94,7 @@ export interface Clip {
   timeline_end_sec: number;
   speed?: number;
   subtitle_text?: string;
+  subtitle_style_ref?: string;
   subtitle_style?: SubtitleStyle;
   video_style?: VideoStyle;
 }

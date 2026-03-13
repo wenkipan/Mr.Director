@@ -9,7 +9,7 @@ import { useAppStore } from './stores/appStore';
 import { createProject, getProject } from './lib/api';
 
 export default function App() {
-  const { projectId, setProjectId, setTimeline } = useAppStore();
+  const { projectId, setProjectId, setTimeline, loadSubtitlePresets } = useAppStore();
 
   // Initialize project on first load, or reload existing project
   useEffect(() => {
@@ -19,6 +19,7 @@ export default function App() {
         .then((res) => {
           setProjectId(res.project_id);
           setTimeline(res.timeline, 0);
+          loadSubtitlePresets();
         })
         .catch((e) => console.error('Failed to create project:', e));
       return;
@@ -28,6 +29,7 @@ export default function App() {
     getProject(projectId)
       .then((res) => {
         setTimeline(res.timeline, res.version ?? 0);
+        loadSubtitlePresets();
       })
       .catch(() => {
         // Project no longer exists on backend — create a new one

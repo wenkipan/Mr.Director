@@ -9,6 +9,7 @@ from pathlib import Path
 from app.config import settings
 from app.models.timeline import TimelineProject, VideoStyle, Clip, MediaAsset
 from app.services.ass_export import generate_ass
+from app.services.srt_export import write_srt_file
 from app.services.export_jobs import update_job
 from app.services.ws_manager import ws_manager
 
@@ -143,7 +144,8 @@ def _escape_filter_path(path: str) -> str:
 
 def _build_filter_complex(
     timeline: TimelineProject,
-    ass_path: str | None,
+    subtitle_path: str | None,
+    subtitle_format: str,
     audio_probe_results: dict[str, bool],
 ) -> tuple[list[str], str, bool]:
     """Build FFmpeg filter_complex script and input arguments.
@@ -196,9 +198,13 @@ def _build_filter_complex(
 
             # Per-clip filter chain
             chain = f"[{input_idx}:v]"
+            ts = clip.timeline_start_sec
             if asset_type == "image":
                 clip_dur = clip.timeline_end_sec - clip.timeline_start_sec
-                chain += f"fps={fps},trim=duration={clip_dur:.6f},setpts=PTS-STARTPTS"
+                chain += (
+                    f"fps={fps},trim=duration={clip_dur:.6f}"
+                    f",setpts=PTS-STARTPTS+{ts:.6f}/TB"
+                )
             else:
                 source_in = clip.source_in_sec or 0.0
                 speed = clip.speed if clip.speed else 1.0
@@ -207,12 +213,16 @@ def _build_filter_complex(
                 else:
                     clip_dur = clip.timeline_end_sec - clip.timeline_start_sec
                     source_out = source_in + clip_dur * speed
-                chain += (
-                    f"trim=start={source_in:.6f}:end={source_out:.6f}"
-                    f",setpts=PTS-STARTPTS"
-                )
-                if clip.speed and clip.speed != 1.0:
-                    chain += f",setpts=PTS/{clip.speed:.6f}"
+                if speed != 1.0:
+                    chain += (
+                        f"trim=start={source_in:.6f}:end={source_out:.6f}"
+                        f",setpts=(PTS-STARTPTS)/{speed:.6f}+{ts:.6f}/TB"
+                    )
+                else:
+                    chain += (
+                        f"trim=start={source_in:.6f}:end={source_out:.6f}"
+                        f",setpts=PTS-STARTPTS+{ts:.6f}/TB"
+                    )
 
             chain += _crop_filter(vs, asset)
             chain += _scale_filter(vs, W, H)
@@ -227,14 +237,13 @@ def _build_filter_complex(
             # Overlay onto current composite
             x = int((vs.position_x - vs.width / 2) * W)
             y = int((vs.position_y - vs.height / 2) * H)
-            ts, te = clip.timeline_start_sec, clip.timeline_end_sec
             next_label = f"v{input_idx}"
 
             overlay_fmt = ":format=auto" if vs.opacity < 1.0 else ""
             filter_lines.append(
                 f"[{current_label}][{clip_label}]"
                 f"overlay=x={x}:y={y}"
-                f":enable='gte(t,{ts:.6f})*lt(t,{te:.6f})'"
+                f":eof_action=pass"
                 f"{overlay_fmt}[{next_label}]"
             )
             current_label = next_label
@@ -243,10 +252,13 @@ def _build_filter_complex(
     # ── FPS normalization ────────────────────────────────────
     filter_lines.append(f"[{current_label}]fps={fps}[vfps]")
 
-    # ── ASS subtitle burn-in ─────────────────────────────────
-    if ass_path:
-        safe = _escape_filter_path(ass_path)
+    # ── Subtitle burn-in ─────────────────────────────────────
+    if subtitle_path and subtitle_format == "ass":
+        safe = _escape_filter_path(subtitle_path)
         filter_lines.append(f"[vfps]ass={safe}[vout]")
+    elif subtitle_path and subtitle_format == "srt":
+        safe = _escape_filter_path(subtitle_path)
+        filter_lines.append(f"[vfps]subtitles={safe}[vout]")
     else:
         filter_lines.append("[vfps]null[vout]")
 
@@ -319,6 +331,7 @@ async def run_ffmpeg_export(
     project_id: str,
     timeline: TimelineProject,
     output_path: str,
+    subtitle_burn_in: str = "ass",
 ) -> None:
     """Run the three-stage FFmpeg export pipeline."""
     output_path = str(Path(output_path).resolve())
@@ -341,8 +354,16 @@ async def run_ffmpeg_export(
                 if mp and mp not in audio_probe:
                     audio_probe[mp] = await _has_audio_stream(ffprobe, mp)
 
-        # ── Generate ASS subtitles ───────────────────────────
-        ass_path = generate_ass(timeline, f"{tmp_dir}/subtitles.ass")
+        # ── Generate subtitle file for burn-in ───────────────
+        if subtitle_burn_in == "ass":
+            subtitle_path = generate_ass(timeline, f"{tmp_dir}/subtitles.ass")
+            subtitle_format = "ass"
+        elif subtitle_burn_in == "srt":
+            subtitle_path = write_srt_file(timeline, f"{tmp_dir}/subtitles.srt")
+            subtitle_format = "srt"
+        else:
+            subtitle_path = None
+            subtitle_format = "none"
 
         # ── Validate input count ─────────────────────────────
         # Subtitle tracks use ASS burn-in and don't consume FFmpeg inputs
@@ -358,7 +379,7 @@ async def run_ffmpeg_export(
 
         # ── Build filter_complex ─────────────────────────────
         input_args, filter_script, has_audio = _build_filter_complex(
-            timeline, ass_path, audio_probe
+            timeline, subtitle_path, subtitle_format, audio_probe
         )
 
         filter_path = f"{tmp_dir}/filter.txt"

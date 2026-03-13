@@ -16,9 +16,16 @@ logger = logging.getLogger(__name__)
 
 @registry.register(
     name="transcribe_audio",
-    description="Transcribe speech in a video/audio file using Whisper ASR. "
-    "Returns word-level timestamps and full transcript. "
-    "Results are saved to <filename>_analysis.md.",
+    description=(
+        "Transcribe speech using Whisper ASR. Returns word-level timestamps and full transcript. "
+        "Includes LLM post-correction for mispronunciation errors. "
+        "Results auto-saved to <filename>_analysis.md (check for existing file first). "
+        "\n\nIMPORTANT: Returned timestamps are in SOURCE TIME (positions within the original media file), "
+        "NOT timeline time. After any cut or rearrangement, use map_time to convert. "
+        "\n\nWhen to use: getting speech content and timestamps for subtitle generation, "
+        "transcript-based editing (removing bad takes, filler words), rough-cut assembly. "
+        "When NOT to use: analyzing visual content (use analyze_video)."
+    ),
     parameters={
         "type": "OBJECT",
         "properties": {

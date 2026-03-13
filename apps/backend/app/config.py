@@ -17,6 +17,14 @@ class Settings(BaseSettings):
     # Thinking/reasoning mode: "off" | "dashscope" | "deepseek"
     openai_thinking: str = "off"
 
+    # Vision provider: "gemini" or "openai"
+    # When "openai", both analyze_video and analyze_image use OpenAI-compatible API
+    vision_provider: str = "gemini"
+    # Empty = fallback to the matching provider's key/base_url/model
+    vision_api_key: str = ""
+    vision_base_url: str = ""
+    vision_model: str = ""
+
     whisper_model_size: str = "medium"
     whisper_device: str = "auto"
     allowed_media_dirs: list[str] = []

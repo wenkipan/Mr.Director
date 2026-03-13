@@ -10,8 +10,13 @@ from app.tools.registry import registry
 
 @registry.register(
     name="generate_subtitles",
-    description="Generate subtitle clips from a transcript (ASR output). "
-    "Creates a subtitle track with text clips at the correct timestamps.",
+    description=(
+        "Generate a subtitle track from transcript segments (ASR output). "
+        "Creates subtitle clips at the correct timestamps. Creates the track if it doesn't exist. "
+        "\n\nWhen to use: after transcribe_audio, to place subtitles on the timeline in bulk. "
+        "When NOT to use: editing individual subtitle text/style (use update_clips), "
+        "applying a style preset (use apply_subtitle_style)."
+    ),
     parameters={
         "type": "OBJECT",
         "properties": {
@@ -71,6 +76,7 @@ async def generate_subtitles(args: dict, state) -> dict:
             timeline_start_sec=start,
             timeline_end_sec=end,
             subtitle_text=text,
+            subtitle_style_ref="default",
         )
         sub_track.clips.append(clip)
         clips_added += 1

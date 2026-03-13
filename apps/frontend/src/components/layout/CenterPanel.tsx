@@ -15,7 +15,7 @@ export default function CenterPanel() {
   const { timeline, selectedMedia, currentFrame, setCurrentFrame, setPlaying, updateTimeline, undo, redo } =
     useAppStore();
   const playerRef = useRef<PlayerRef>(null);
-  const { selectedClipIds, selectClip, clearSelection } = useSelectionStore();
+  const { selectedClipIds, selectClip, setSelection, clearSelection } = useSelectionStore();
 
   // Auto-save on timeline edits (1s debounce)
   useAutoSave(1000);
@@ -141,6 +141,7 @@ export default function CenterPanel() {
             onTimelineChange={handleTimelineChange}
             selectedClipIds={selectedClipIds}
             onSelectClip={selectClip}
+            onSetSelection={setSelection}
             onClearSelection={clearSelection}
           />
         </div>

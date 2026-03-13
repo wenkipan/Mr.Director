@@ -5,6 +5,7 @@ import SpeedControl from './SpeedControl';
 interface VideoClipEditorProps {
   clip: Clip;
   onUpdate: (updates: Partial<Clip>) => void;
+  batchMode?: boolean;
 }
 
 interface NumberFieldProps {
@@ -45,7 +46,7 @@ function NumberField({ label, value, min, max, step = 0.01, onChange }: NumberFi
   );
 }
 
-export default function VideoClipEditor({ clip, onUpdate }: VideoClipEditorProps) {
+export default function VideoClipEditor({ clip, onUpdate, batchMode }: VideoClipEditorProps) {
   const style: VideoStyle = clip.video_style ?? {};
 
   const handleStyleChange = useCallback(
@@ -59,8 +60,8 @@ export default function VideoClipEditor({ clip, onUpdate }: VideoClipEditorProps
 
   return (
     <div className="space-y-4">
-      {/* Speed — only for media clips with source range */}
-      {clip.source_in_sec != null && clip.source_out_sec != null && (
+      {/* Speed — only for media clips with source range (hidden in batch mode) */}
+      {!batchMode && clip.source_in_sec != null && clip.source_out_sec != null && (
         <SpeedControl clip={clip} onSpeedChange={(v) => onUpdate({ speed: v })} />
       )}
 

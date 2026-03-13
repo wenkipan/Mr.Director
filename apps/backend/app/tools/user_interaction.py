@@ -7,8 +7,12 @@ from app.tools.registry import registry
 
 @registry.register(
     name="present_plan",
-    description="Present an editing plan summary to the user for review. "
-    "Use this to explain what you intend to do before making changes.",
+    description=(
+        "Present an editing plan to the user for review before executing. Stops the agent loop. "
+        "\n\nWhen to use: the edit is complex or ambiguous — multiple clips, structural changes, "
+        "or decisions that the user should approve first. "
+        "When NOT to use: simple, unambiguous operations (just do it and explain after)."
+    ),
     parameters={
         "type": "OBJECT",
         "properties": {
@@ -30,7 +34,11 @@ async def present_plan(args: dict, state) -> dict:
 
 @registry.register(
     name="ask_user",
-    description="Ask the user a clarifying question. Use when you need more information to proceed.",
+    description=(
+        "Ask the user a clarifying question. Stops the agent loop and waits for their reply. "
+        "\n\nWhen to use: the user's intent is genuinely ambiguous and guessing wrong would waste work. "
+        "When NOT to use: you can reasonably infer the answer from context — prefer action over asking."
+    ),
     parameters={
         "type": "OBJECT",
         "properties": {

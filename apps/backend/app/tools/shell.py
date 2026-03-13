@@ -12,8 +12,13 @@ ALLOWED_COMMANDS = {"ffprobe", "ls", "cat", "head", "wc", "file", "du", "mediain
 
 @registry.register(
     name="run_shell",
-    description="Run a shell command. Primarily used for ffprobe to get media file info. "
-    "Allowed commands: ffprobe, ls, cat, head, wc, file, du, mediainfo.",
+    description=(
+        "Run a sandboxed shell command (ffprobe, ls, cat, head, wc, file, du, mediainfo). "
+        "60-second timeout. "
+        "\n\nWhen to use: getting media metadata with `ffprobe -v quiet -print_format json -show_format -show_streams <file>` "
+        "— this is the primary way to get duration, resolution, codec, and audio channel info before adding media to the pool. "
+        "When NOT to use: listing files (use list_files), reading text files (use read_file)."
+    ),
     parameters={
         "type": "OBJECT",
         "properties": {

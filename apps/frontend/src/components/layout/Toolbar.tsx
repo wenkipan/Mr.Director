@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useAppStore } from '../../stores/appStore';
-import { listProjects, createProject, getProject, startExport, getExportStatus, exportInterchange, getGpuStatus, type GpuStatus } from '../../lib/api';
+import { listProjects, createProject, getProject, renameProject, startExport, getExportStatus, exportInterchange, getGpuStatus, type GpuStatus } from '../../lib/api';
 import ExportProgressModal from './ExportProgressModal';
 
 type ExportStatus = 'idle' | 'queued' | 'rendering' | 'completed' | 'error';
@@ -13,7 +13,7 @@ interface ExportState {
 }
 
 export default function Toolbar() {
-  const { timeline, projectId, setProjectId, setTimeline, clearMessages } = useAppStore();
+  const { timeline, projectId, setProjectId, setTimeline, clearMessages, loadSubtitlePresets } = useAppStore();
   const [exportState, setExportState] = useState<ExportState>({
     exportId: null,
     status: 'idle',
@@ -24,8 +24,11 @@ export default function Toolbar() {
   const [gpuStatus, setGpuStatus] = useState<GpuStatus | null>(null);
   const [projectListOpen, setProjectListOpen] = useState(false);
   const [projectList, setProjectList] = useState<{ project_id: string; name: string }[]>([]);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState('');
   const dropdownRef = useRef<HTMLDivElement>(null);
   const projectDropdownRef = useRef<HTMLDivElement>(null);
+  const editInputRef = useRef<HTMLInputElement>(null);
 
   // Fetch GPU status on mount
   useEffect(() => {
@@ -95,6 +98,18 @@ export default function Toolbar() {
     }
   }, [projectId]);
 
+  const handleExportH264 = useCallback(async (subtitleBurnIn: 'ass' | 'srt' | 'none') => {
+    if (!projectId) return;
+    setDropdownOpen(false);
+    setExportState({ exportId: null, status: 'queued', progress: 0, error: null });
+    try {
+      const data = await startExport(projectId, 'h264', subtitleBurnIn);
+      setExportState({ exportId: data.export_id, status: 'rendering', progress: 0, error: null });
+    } catch (e: any) {
+      setExportState({ exportId: null, status: 'error', progress: 0, error: e.message || 'Failed to start export' });
+    }
+  }, [projectId]);
+
   const handleExportInterchange = useCallback(async (format: 'otio' | 'fcpxml') => {
     if (!projectId) return;
     setDropdownOpen(false);
@@ -130,22 +145,47 @@ export default function Toolbar() {
       const res = await getProject(id);
       setProjectId(id);
       setTimeline(res.timeline, res.version ?? 0);
+      loadSubtitlePresets();
       clearMessages();
     } catch (e: any) {
       console.error('Failed to load project:', e);
     }
-  }, [projectId, setProjectId, setTimeline, clearMessages]);
+  }, [projectId, setProjectId, setTimeline, clearMessages, loadSubtitlePresets]);
 
   const handleNewProject = useCallback(async () => {
     try {
       const res = await createProject('Untitled');
       setProjectId(res.project_id);
       setTimeline(res.timeline, 0);
+      loadSubtitlePresets();
       clearMessages();
     } catch (e: any) {
       console.error('Failed to create project:', e);
     }
-  }, [setProjectId, setTimeline, clearMessages]);
+  }, [setProjectId, setTimeline, clearMessages, loadSubtitlePresets]);
+
+  const handleStartRename = useCallback((e: React.MouseEvent, id: string, name: string) => {
+    e.stopPropagation();
+    setEditingId(id);
+    setEditingName(name);
+    setTimeout(() => editInputRef.current?.select(), 0);
+  }, []);
+
+  const handleCommitRename = useCallback(async () => {
+    if (!editingId) return;
+    const trimmed = editingName.trim() || 'Untitled';
+    try {
+      await renameProject(editingId, trimmed);
+      setProjectList((prev) => prev.map((p) => p.project_id === editingId ? { ...p, name: trimmed } : p));
+      // Update current timeline name if renaming the active project
+      if (editingId === projectId && timeline) {
+        setTimeline({ ...timeline, project: { ...timeline.project, name: trimmed } });
+      }
+    } catch (e: any) {
+      console.error('Failed to rename project:', e);
+    }
+    setEditingId(null);
+  }, [editingId, editingName, projectId, timeline, setTimeline]);
 
   const hasContent = timeline && timeline.tracks.length > 0;
   const isExporting = exportState.status === 'queued' || exportState.status === 'rendering';
@@ -171,18 +211,47 @@ export default function Toolbar() {
                 <div className="px-3 py-1.5 text-xs text-zinc-500">No projects</div>
               ) : (
                 projectList.map((p) => (
-                  <button
+                  <div
                     key={p.project_id}
-                    onClick={() => handleSwitchProject(p.project_id)}
-                    className={`w-full text-left px-3 py-1.5 text-xs transition-colors truncate ${
+                    className={`flex items-center px-3 py-1.5 text-xs transition-colors ${
                       p.project_id === projectId
                         ? 'text-blue-400 bg-zinc-700/50'
                         : 'text-zinc-200 hover:bg-zinc-700'
                     }`}
                   >
-                    {p.name}
-                    <span className="ml-1.5 text-zinc-500">{p.project_id}</span>
-                  </button>
+                    {editingId === p.project_id ? (
+                      <input
+                        ref={editInputRef}
+                        value={editingName}
+                        onChange={(e) => setEditingName(e.target.value)}
+                        onBlur={handleCommitRename}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleCommitRename();
+                          if (e.key === 'Escape') setEditingId(null);
+                        }}
+                        className="flex-1 bg-zinc-900 border border-zinc-600 rounded px-1 py-0.5 text-xs text-zinc-100 outline-none focus:border-blue-500"
+                        autoFocus
+                      />
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => handleSwitchProject(p.project_id)}
+                          className="flex-1 text-left truncate"
+                        >
+                          {p.name}
+                        </button>
+                        <button
+                          onClick={(e) => handleStartRename(e, p.project_id, p.name)}
+                          className="ml-1.5 p-0.5 rounded text-zinc-500 hover:text-zinc-200 hover:bg-zinc-600 transition-colors shrink-0"
+                          title="Rename"
+                        >
+                          <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M17 3a2.85 2.83 0 114 4L7.5 20.5 2 22l1.5-5.5Z" />
+                          </svg>
+                        </button>
+                      </>
+                    )}
+                  </div>
                 ))
               )}
             </div>
@@ -266,11 +335,24 @@ export default function Toolbar() {
               >
                 Export MP4 (Remotion)
               </button>
+              <div className="px-3 pt-1.5 pb-0.5 text-xs text-zinc-500 font-medium">MP4 (FFmpeg/h264)</div>
               <button
-                onClick={() => handleExportMp4('h264')}
-                className="w-full text-left px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-700 transition-colors"
+                onClick={() => handleExportH264('ass')}
+                className="w-full text-left px-4 py-1.5 text-xs text-zinc-200 hover:bg-zinc-700 transition-colors"
               >
-                Export MP4 (FFmpeg)
+                Burn-in ASS (styled)
+              </button>
+              <button
+                onClick={() => handleExportH264('srt')}
+                className="w-full text-left px-4 py-1.5 text-xs text-zinc-200 hover:bg-zinc-700 transition-colors"
+              >
+                Burn-in SRT (plain)
+              </button>
+              <button
+                onClick={() => handleExportH264('none')}
+                className="w-full text-left px-4 py-1.5 text-xs text-zinc-200 hover:bg-zinc-700 transition-colors"
+              >
+                No subtitle burn-in
               </button>
               <div className="my-1 border-t border-zinc-700" />
               <button

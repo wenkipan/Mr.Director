@@ -217,12 +217,16 @@ def map_range_source_to_timeline(
 @registry.register(
     name="map_time",
     description=(
-        "Convert between timeline times and source media times. "
-        "Direction 'timeline_to_source': given timeline time(s), find which clip(s) "
-        "cover them and return the corresponding source media times (with media_id and path). "
-        "Direction 'source_to_timeline': given a media_id and source time(s), "
-        "find clips using that media and return the corresponding timeline times. "
-        "Supports single points and ranges. Supports batch conversion of multiple queries."
+        "Convert between timeline times and source media times (bidirectional, batch-capable). "
+        "'timeline_to_source': given timeline position(s), find which clip(s) are playing "
+        "and return the corresponding source media times. "
+        "'source_to_timeline': given a media_id and source time(s) (e.g. ASR timestamps), "
+        "find where they appear on the timeline. "
+        "\n\nWhen to use: correlating ASR/transcript timestamps (source time) with timeline positions, "
+        "answering 'what is playing at timeline position X?', finding where a transcript moment appears in the edit. "
+        "MANDATORY when working with ASR timestamps after any cuts or rearrangements — "
+        "source times and timeline times are almost never equal after editing. "
+        "When NOT to use: the timeline has not been edited yet and clips start at source_in_sec=0 with no cuts."
     ),
     parameters={
         "type": "OBJECT",

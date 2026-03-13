@@ -17,15 +17,21 @@ import app.tools.filesystem  # noqa: F401
 import app.tools.shell  # noqa: F401
 import app.tools.timeline_ops  # noqa: F401
 import app.tools.user_interaction  # noqa: F401
-import app.tools.gemini_vision  # noqa: F401
+import app.tools.vision  # noqa: F401
 import app.tools.asr  # noqa: F401
 import app.tools.subtitles  # noqa: F401
 import app.tools.time_mapping  # noqa: F401
+import app.tools.export  # noqa: F401
+import app.tools.subtitle_styles  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
 MAX_ITERATIONS = 20
-TIMELINE_MODIFYING_TOOLS = {"create_timeline", "edit_clips", "split_timeline", "manage_timeline", "generate_subtitles", "remove_gap"}
+TIMELINE_MODIFYING_TOOLS = {
+    "create_timeline", "manage_timeline", "split_timeline", "remove_gap",
+    "add_clips", "update_clips", "delete_clips", "move_clips",
+    "generate_subtitles",
+}
 # Tools that require user interaction — agent loop must stop and return the message
 USER_FACING_TOOLS = {"ask_user", "present_plan"}
 

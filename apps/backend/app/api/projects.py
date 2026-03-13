@@ -32,17 +32,37 @@ async def list_projects():
 
 
 @router.post("")
-async def create_project(name: str = "Untitled"):
+async def create_project(
+    name: str = "Untitled",
+    width: int = 1920,
+    height: int = 1080,
+    fps: float = 30,
+):
     """Create a new empty project."""
     project_id = f"proj_{int.from_bytes(os.urandom(4), 'big')}"
     tl = TimelineProject(
         version="1.0.0",
-        project={"name": name, "width": 1920, "height": 1080, "fps": 30},
+        project={"name": name, "width": width, "height": height, "fps": fps},
         media_pool=[],
-        tracks=[],
+        tracks=[
+            {"id": "track-video-1", "name": "Video 1", "type": "video", "clips": []},
+            {"id": "track-audio-1", "name": "Audio 1", "type": "audio", "clips": []},
+        ],
     )
     timeline_manager.create_project(project_id, tl)
     return {"project_id": project_id, "timeline": tl.model_dump()}
+
+
+@router.patch("/{project_id}/name")
+async def rename_project(project_id: str, name: str):
+    """Rename a project."""
+    if not timeline_manager.project_exists(project_id):
+        raise HTTPException(status_code=404, detail=f"Project not found: {project_id}")
+    state = timeline_manager.get_state(project_id)
+    if state.current_timeline:
+        state.current_timeline.project.name = name
+        timeline_manager._save_to_disk(state)
+    return {"project_id": project_id, "name": name}
 
 
 @router.get("/{project_id}")

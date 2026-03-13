@@ -29,7 +29,7 @@ interface TimelineClipLayerProps {
   dragState: DragState | null;
   onClipSelect: (clipId: string, multi: boolean) => void;
   onClipDragStart: (clipId: string, type: DragType, pointerX: number) => void;
-  onBackgroundClick: () => void;
+  onBackgroundPointerDown: (e: React.PointerEvent) => void;
 }
 
 export default function TimelineClipLayer({
@@ -41,11 +41,11 @@ export default function TimelineClipLayer({
   dragState,
   onClipSelect,
   onClipDragStart,
-  onBackgroundClick,
+  onBackgroundPointerDown,
 }: TimelineClipLayerProps) {
   const clipHeight = TRACK_HEIGHT - CLIP_PADDING * 2;
 
-  // Build lookup maps: media_id → display name, media_id → file path
+  // Build lookup maps: media_id → display name, file path
   const mediaNameMap = new Map<string, string>();
   const mediaPathMap = new Map<string, string>();
   for (const asset of timeline.media_pool) {
@@ -59,9 +59,8 @@ export default function TimelineClipLayer({
       className="absolute top-0 left-0 h-full"
       style={{ width: contentWidth, clipPath: `inset(${RULER_HEIGHT}px 0 0 0)` }}
       onPointerDown={(e) => {
-        // Click on background (not on a clip) → clear selection
         if (e.target === e.currentTarget) {
-          onBackgroundClick();
+          onBackgroundPointerDown(e);
         }
       }}
     >

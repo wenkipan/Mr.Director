@@ -1,4 +1,4 @@
-"""Timeline operations: get, create, manage, edit_clips, split_timeline."""
+"""Timeline operations: get, create, manage, add/update/delete/move clips, split, remove_gap."""
 
 from __future__ import annotations
 
@@ -61,8 +61,11 @@ def _parse_json_arg(raw, field_name: str = "arg") -> tuple[object, dict | None]:
 
 @registry.register(
     name="get_timeline",
-    description="Get the full current timeline JSON including all clip details. "
-    "Always call this before making modifications to understand current state.",
+    description=(
+        "Retrieve the full current timeline JSON — all tracks, clips, media_pool, and project metadata. "
+        "\n\nWhen to use: BEFORE any modification to confirm clip IDs, positions, and current state. "
+        "When NOT to use: you just created or modified the timeline in this same turn and already have the state."
+    ),
     parameters={
         "type": "OBJECT",
         "properties": {},
@@ -84,7 +87,12 @@ async def get_timeline(args: dict, state) -> dict:
 
 @registry.register(
     name="create_timeline",
-    description="Create a new timeline from scratch. Provide project metadata, media pool, and tracks with clips.",
+    description=(
+        "Create a brand-new timeline with project settings, media_pool, and initial tracks/clips. "
+        "Replaces any existing timeline for this project. "
+        "\n\nWhen to use: starting a new edit from scratch. "
+        "When NOT to use: timeline already exists and you want to modify it (use add_clips/update_clips/etc)."
+    ),
     parameters={
         "type": "OBJECT",
         "properties": {
@@ -155,8 +163,14 @@ async def create_timeline(args: dict, state) -> dict:
 
 @registry.register(
     name="manage_timeline",
-    description="Manage timeline structure: add/remove tracks, add media to pool, update project settings. "
-    "Operations: add_track, remove_track, add_media, set_project_meta.",
+    description=(
+        "Manage non-clip timeline structure: add/remove tracks, register media in the pool, "
+        "update project settings (resolution, fps, name). "
+        "Operations: add_track, remove_track, add_media, set_project_meta. "
+        "\n\nWhen to use: adding a new track before placing clips, registering a media file, "
+        "changing project resolution/fps. "
+        "When NOT to use: adding/editing/deleting clips (use add_clips/update_clips/delete_clips)."
+    ),
     parameters={
         "type": "OBJECT",
         "properties": {
@@ -250,9 +264,12 @@ def _exec_add(timeline: TimelineProject, op: dict) -> dict:
         "speed": speed,
     }
     # Optional fields
-    for key in ("subtitle_text", "subtitle_style", "video_style"):
+    for key in ("subtitle_text", "subtitle_style_ref", "subtitle_style", "video_style"):
         if op.get(key) is not None:
             clip_data[key] = op[key]
+    # Default style ref for subtitle clips
+    if clip_type == "subtitle" and not clip_data.get("subtitle_style_ref"):
+        clip_data["subtitle_style_ref"] = "default"
 
     clip = Clip(**clip_data)
     _recompute_end(clip)
@@ -283,6 +300,9 @@ def _exec_update(timeline: TimelineProject, op: dict) -> dict:
     # Updatable object/string fields
     if "subtitle_text" in op:
         clip.subtitle_text = op["subtitle_text"]
+
+    if "subtitle_style_ref" in op:
+        clip.subtitle_style_ref = op["subtitle_style_ref"]
 
     if "subtitle_style" in op:
         style = op["subtitle_style"]
@@ -364,67 +384,187 @@ def _exec_move(timeline: TimelineProject, op: dict) -> dict:
     return {"success": True, "moved_clips": moved, "delta_sec": delta}
 
 
-_OP_DISPATCH = {
-    "add": _exec_add,
-    "update": _exec_update,
-    "delete": _exec_delete,
-    "move": _exec_move,
-}
-
-
-@registry.register(
-    name="edit_clips",
-    description="Add, move, update, or delete clips in a batch. Operations are applied sequentially; "
-    "on error all changes are rolled back. "
-    "Do NOT include split here — use split_timeline separately. "
-    "timeline_end_sec is auto-computed from source_in_sec, source_out_sec, speed, and timeline_start_sec; do not pass it for media clips.",
-    parameters={
-        "type": "OBJECT",
-        "properties": {
-            "operations": {
-                "type": "STRING",
-                "description": "JSON array of operations. Each object must have an 'op' field: "
-                "'add' — {op: 'add', track_id, type?, media_id?, source_in_sec, source_out_sec, timeline_start_sec, speed?, subtitle_text?, subtitle_style?, video_style?}. "
-                "timeline_end_sec is auto-computed for media clips. For subtitle clips provide timeline_end_sec explicitly. "
-                "'move' — {op: 'move', clip_ids?: [string], track_id?: string, delta_sec: number}. "
-                "Batch-shift clips by delta_sec (positive=right, negative=left). "
-                "Provide clip_ids for specific clips, or track_id to move all clips on that track. "
-                "'update' — {op: 'update', clip_id, source_in_sec?, source_out_sec?, timeline_start_sec?, timeline_end_sec?, speed?, subtitle_text?, subtitle_style?, video_style?}. "
-                "'delete' — {op: 'delete', clip_id}.",
-            },
-        },
-        "required": ["operations"],
-    },
-)
-async def edit_clips(args: dict, state) -> dict:
+def _batch_execute(state, items: list, handler) -> dict:
+    """Run a batch of same-type operations with snapshot rollback on error."""
     if not state.current_timeline:
         return {"error": "No timeline exists. Use create_timeline first."}
-
-    operations, err = _parse_json_arg(args.get("operations", "[]"), "operations")
-    if err:
-        return err
-
-    if not isinstance(operations, list) or len(operations) == 0:
-        return {"error": "operations must be a non-empty array"}
+    if not isinstance(items, list) or len(items) == 0:
+        return {"error": "items must be a non-empty array"}
 
     snapshot = deepcopy(state.current_timeline)
     results = []
-
-    for i, op_item in enumerate(operations):
-        op_type = op_item.get("op")
-        handler = _OP_DISPATCH.get(op_type)
-        if not handler:
-            state.current_timeline = snapshot
-            return {"error": f"Operation #{i}: unknown op '{op_type}'. Use add, update, or delete."}
-
-        result = handler(state.current_timeline, op_item)
+    for i, item in enumerate(items):
+        result = handler(state.current_timeline, item)
         if "error" in result:
             state.current_timeline = snapshot
-            return {"error": f"Operation #{i} ({op_type}): {result['error']}", "failed_index": i}
-
-        results.append({"index": i, "op": op_type, **result})
-
+            return {"error": f"Item #{i}: {result['error']}", "failed_index": i}
+        results.append({"index": i, **result})
     return {"success": True, "applied": len(results), "results": results}
+
+
+# ──────────────────────────────────────────────
+# add_clips
+# ──────────────────────────────────────────────
+
+
+@registry.register(
+    name="add_clips",
+    description=(
+        "Add one or more new clips to the timeline. Supports batch — pass an array of clip definitions. "
+        "On error, ALL additions are rolled back (atomic). "
+        "\n\ntimeline_end_sec is auto-computed for media clips from (source_out_sec - source_in_sec) / speed + timeline_start_sec. "
+        "For subtitle clips (no media_id), provide timeline_end_sec explicitly. "
+        "\n\nWhen to use: placing new footage, images, or subtitles on the timeline. "
+        "When NOT to use: modifying existing clips (use update_clips), repositioning clips (use move_clips)."
+    ),
+    parameters={
+        "type": "OBJECT",
+        "properties": {
+            "clips": {
+                "type": "STRING",
+                "description": (
+                    "JSON array of clip objects to add. Each object: "
+                    "{track_id, media_id?, type?, source_in_sec, source_out_sec, timeline_start_sec, "
+                    "speed? (default 1.0), subtitle_text?, subtitle_style_ref?, subtitle_style?, video_style?}. "
+                    "For subtitle clips: omit media_id, provide subtitle_text and timeline_end_sec."
+                ),
+            },
+        },
+        "required": ["clips"],
+    },
+)
+async def add_clips(args: dict, state) -> dict:
+    items, err = _parse_json_arg(args.get("clips", "[]"), "clips")
+    if err:
+        return err
+    return _batch_execute(state, items, _exec_add)
+
+
+# ──────────────────────────────────────────────
+# update_clips
+# ──────────────────────────────────────────────
+
+
+@registry.register(
+    name="update_clips",
+    description=(
+        "Update properties of one or more existing clips. Only pass the fields you want to change — "
+        "unspecified fields are left untouched. Supports batch. Atomic rollback on error. "
+        "timeline_end_sec is auto-recomputed when source_in_sec, source_out_sec, or speed change. "
+        "\n\nWhen to use: trimming (source_in/out), changing speed, editing subtitle text/style, "
+        "adjusting video_style (crop, opacity, PiP position). "
+        "When NOT to use: shifting clip position on the timeline (use move_clips), "
+        "removing clips (use delete_clips)."
+    ),
+    parameters={
+        "type": "OBJECT",
+        "properties": {
+            "clips": {
+                "type": "STRING",
+                "description": (
+                    "JSON array of update objects. Each object: "
+                    "{clip_id, source_in_sec?, source_out_sec?, timeline_start_sec?, "
+                    "timeline_end_sec?, speed?, subtitle_text?, subtitle_style_ref?, "
+                    "subtitle_style?, video_style?}. "
+                    "clip_id is required; all other fields are optional."
+                ),
+            },
+        },
+        "required": ["clips"],
+    },
+)
+async def update_clips(args: dict, state) -> dict:
+    items, err = _parse_json_arg(args.get("clips", "[]"), "clips")
+    if err:
+        return err
+    return _batch_execute(state, items, _exec_update)
+
+
+# ──────────────────────────────────────────────
+# delete_clips
+# ──────────────────────────────────────────────
+
+
+@registry.register(
+    name="delete_clips",
+    description=(
+        "Delete one or more clips from the timeline by clip_id. Supports batch. Atomic rollback on error. "
+        "Clips are looked up globally — no track_id needed. "
+        "\n\nWhen to use: removing unwanted clips. "
+        "When NOT to use: if you need to close the gap left behind, call remove_gap after deleting. "
+        "If you want to replace a clip, consider update_clips instead of delete + add."
+    ),
+    parameters={
+        "type": "OBJECT",
+        "properties": {
+            "clip_ids": {
+                "type": "STRING",
+                "description": "JSON array of clip IDs to delete. Example: [\"clip_abc123\", \"clip_def456\"].",
+            },
+        },
+        "required": ["clip_ids"],
+    },
+)
+async def delete_clips(args: dict, state) -> dict:
+    raw, err = _parse_json_arg(args.get("clip_ids", "[]"), "clip_ids")
+    if err:
+        return err
+    items = [{"clip_id": cid} for cid in raw]
+    return _batch_execute(state, items, _exec_delete)
+
+
+# ──────────────────────────────────────────────
+# move_clips
+# ──────────────────────────────────────────────
+
+
+@registry.register(
+    name="move_clips",
+    description=(
+        "Shift one or more clips in time by a delta offset. All specified clips move by the same amount. "
+        "Positive delta = shift right (later), negative = shift left (earlier). "
+        "\n\nWhen to use: closing gaps between clips, making room for inserts, "
+        "shifting a group of clips together (e.g. all clips after a certain point). "
+        "When NOT to use: repositioning a single clip to an exact position "
+        "(use update_clips with timeline_start_sec instead)."
+    ),
+    parameters={
+        "type": "OBJECT",
+        "properties": {
+            "delta_sec": {
+                "type": "NUMBER",
+                "description": "Time offset in seconds. Positive = shift right/later, negative = shift left/earlier.",
+            },
+            "clip_ids": {
+                "type": "STRING",
+                "description": "JSON array of clip IDs to move. Provide this OR track_id, not both.",
+            },
+            "track_id": {
+                "type": "STRING",
+                "description": "Move ALL clips on this track. Provide this OR clip_ids, not both.",
+            },
+        },
+        "required": ["delta_sec"],
+    },
+)
+async def move_clips(args: dict, state) -> dict:
+    if not state.current_timeline:
+        return {"error": "No timeline exists. Use create_timeline first."}
+
+    op = {"delta_sec": args.get("delta_sec")}
+    if args.get("clip_ids"):
+        raw, err = _parse_json_arg(args["clip_ids"], "clip_ids")
+        if err:
+            return err
+        op["clip_ids"] = raw
+    if args.get("track_id"):
+        op["track_id"] = args["track_id"]
+
+    snapshot = deepcopy(state.current_timeline)
+    result = _exec_move(state.current_timeline, op)
+    if "error" in result:
+        state.current_timeline = snapshot
+    return result
 
 
 # ──────────────────────────────────────────────
@@ -434,9 +574,13 @@ async def edit_clips(args: dict, state) -> dict:
 
 @registry.register(
     name="split_timeline",
-    description="Split clips at one or more timeline time points. "
-    "If track_id is given, only clips on that track are split; "
-    "otherwise ALL tracks are split. Returns new clip IDs for further editing.",
+    description=(
+        "Split clips at one or more timeline time points. Returns new clip IDs for further editing. "
+        "If track_id is given, only that track is affected; otherwise ALL tracks are split. "
+        "\n\nWhen to use: you need to cut a clip into two pieces before deleting/updating one half. "
+        "Always call this BEFORE delete_clips/update_clips when you need to work with a sub-range of an existing clip. "
+        "When NOT to use: removing a whole clip (just delete_clips), trimming from the edges (update_clips with source_in/out)."
+    ),
     parameters={
         "type": "OBJECT",
         "properties": {
@@ -506,10 +650,13 @@ def _find_gap_on_track(track: Track, gap_start: float, gap_end: float) -> str | 
 
 @registry.register(
     name="remove_gap",
-    description="Remove a gap (empty space) on the timeline by shifting all clips after the gap backward. "
-    "Validates that the specified range is actually a gap (contains no clips). "
-    "If track_id is given, only that track is affected. "
-    "If track_id is omitted, all non-locked tracks are affected: clips after gap_start_sec shift backward by gap_duration on every track.",
+    description=(
+        "Remove a gap (empty space) on the timeline by shifting all subsequent clips backward. "
+        "Validates that the range is actually empty (no clips). "
+        "If track_id is given, only that track; otherwise all non-locked tracks. "
+        "\n\nWhen to use: after delete_clips leaves a gap you want to close. "
+        "When NOT to use: to shift specific clips (use move_clips with a negative delta instead)."
+    ),
     parameters={
         "type": "OBJECT",
         "properties": {

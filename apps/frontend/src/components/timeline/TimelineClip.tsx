@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useRef } from 'react';
 import type { Clip } from '@mrdv2/shared';
 import { TRACK_COLORS, CLIP_PADDING, TRIM_HANDLE_WIDTH } from './timelineConstants';
 import { hitTestClipRegion } from './timelineUtils';
@@ -48,11 +48,9 @@ export default function TimelineClip({
   const color = TRACK_COLORS[trackType] || '#6b7280';
 
   const showWaveform = trackType === 'audio' || trackType === 'video';
-  const mediaUrl = useMemo(
-    () => showWaveform && mediaFilePath ? `/api/media/file?path=${encodeURIComponent(mediaFilePath)}` : null,
-    [showWaveform, mediaFilePath],
+  const { waveformData } = useAudioWaveform(
+    showWaveform ? (mediaFilePath ?? null) : null,
   );
-  const { audioData } = useAudioWaveform(mediaUrl);
 
   const actualLeft = dragLeft !== null ? dragLeft : left + dragOffsetPx;
   const actualWidth = dragWidth !== null ? dragWidth : width;
@@ -128,9 +126,9 @@ export default function TimelineClip({
       />
 
       {/* Audio waveform (shown on audio and video tracks) */}
-      {showWaveform && audioData && (
+      {showWaveform && waveformData && (
         <AudioWaveform
-          audioData={audioData}
+          waveformData={waveformData}
           sourceInSec={clip.source_in_sec ?? 0}
           sourceOutSec={clip.source_out_sec ?? 0}
           width={actualWidth}
@@ -142,8 +140,8 @@ export default function TimelineClip({
       {/* Clip label — bottom-anchored when waveform is shown, centered for others */}
       {actualWidth > 40 && (
         <div
-          className={`px-1.5 text-white text-[10px] whitespace-nowrap overflow-hidden pointer-events-none ${audioData ? 'absolute bottom-0 left-0 right-0' : ''}`}
-          style={audioData
+          className={`px-1.5 text-white text-[10px] whitespace-nowrap overflow-hidden pointer-events-none ${waveformData ? 'absolute bottom-0 left-0 right-0' : ''}`}
+          style={waveformData
             ? { lineHeight: '16px' }
             : { lineHeight: `${height}px` }
           }

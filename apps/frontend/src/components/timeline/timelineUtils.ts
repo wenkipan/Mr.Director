@@ -1,5 +1,12 @@
 import type { Clip, Track, MediaAsset, TimelineProject } from '@mrdv2/shared';
-import { TRIM_HANDLE_WIDTH, MIN_CLIP_DURATION_SEC } from './timelineConstants';
+import {
+  TRIM_HANDLE_WIDTH,
+  MIN_CLIP_DURATION_SEC,
+  HEADER_WIDTH,
+  RULER_HEIGHT,
+  TRACK_HEIGHT,
+  CLIP_PADDING,
+} from './timelineConstants';
 
 const GAP_EPSILON = 1e-6;
 
@@ -463,4 +470,52 @@ export function removeGapAllTracks(
       };
     }),
   };
+}
+
+/** Apply the same updates to multiple clips by ID */
+export function updateClipsInTimeline(
+  timeline: TimelineProject,
+  clipIds: Set<string>,
+  updates: Partial<Clip>,
+): TimelineProject {
+  return {
+    ...timeline,
+    tracks: timeline.tracks.map((track) => ({
+      ...track,
+      clips: track.clips.map((clip) =>
+        clipIds.has(clip.id) ? { ...clip, ...updates } : clip,
+      ),
+    })),
+  };
+}
+
+/** Get all clip IDs whose bounding boxes intersect the given rectangle (in content-space pixels) */
+export function getClipIdsInRect(
+  timeline: TimelineProject,
+  rect: { x: number; y: number; width: number; height: number },
+  pixelsPerSec: number,
+): Set<string> {
+  const result = new Set<string>();
+  const mx1 = rect.x;
+  const my1 = rect.y;
+  const mx2 = mx1 + rect.width;
+  const my2 = my1 + rect.height;
+
+  for (let trackIndex = 0; trackIndex < timeline.tracks.length; trackIndex++) {
+    const track = timeline.tracks[trackIndex];
+    const clipTop = RULER_HEIGHT + trackIndex * TRACK_HEIGHT + CLIP_PADDING;
+    const clipBottom = clipTop + (TRACK_HEIGHT - CLIP_PADDING * 2);
+
+    if (my2 < clipTop || my1 > clipBottom) continue;
+
+    for (const clip of track.clips) {
+      const clipLeft = HEADER_WIDTH + clip.timeline_start_sec * pixelsPerSec;
+      const clipRight = HEADER_WIDTH + clip.timeline_end_sec * pixelsPerSec;
+
+      if (mx2 >= clipLeft && mx1 <= clipRight) {
+        result.add(clip.id);
+      }
+    }
+  }
+  return result;
 }

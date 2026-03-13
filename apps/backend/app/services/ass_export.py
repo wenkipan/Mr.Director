@@ -6,7 +6,8 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from app.models.timeline import TimelineProject, SubtitleStyle
+from app.models.timeline import TimelineProject, SubtitleStyle, resolve_subtitle_style
+from app.services.subtitle_styles import load_preset, ensure_default_preset
 
 logger = logging.getLogger(__name__)
 
@@ -125,46 +126,63 @@ def _escape_ass_text(text: str) -> str:
 
 
 def _style_hash(s: SubtitleStyle) -> str:
-    key = (
-        f"{s.font_family}|{s.font_size}|{s.color}|{s.background}"
-        f"|{s.text_align}|{s.bold}|{s.italic}"
-    )
+    key = s.model_dump_json(exclude_none=True)
     return hashlib.md5(key.encode()).hexdigest()[:8]
 
 
 def _build_style_line(name: str, s: SubtitleStyle) -> str:
     """Build one ASS ``[V4+ Styles]`` line.
 
-    ``BorderStyle=3`` renders an opaque background box using *BackColour*.
+    Uses BorderStyle=3 (opaque box) when background is set,
+    BorderStyle=1 (outline + shadow) otherwise.
     """
     primary = _css_to_ass_color(s.color or "#FFFFFF")
     secondary = "&H00000000&"
-    outline = "&H00000000&"
-    back = _css_to_ass_color(s.background or "rgba(0,0,0,0.6)")
+
+    bg = s.background or "rgba(0,0,0,0.6)"
+    has_outline = (s.outline_width or 0) > 0 and s.outline_color and s.outline_color != "transparent"
+    has_bg = bg and bg != "transparent"
+
+    if has_outline:
+        outline_color = _css_to_ass_color(s.outline_color or "#000000")
+    else:
+        outline_color = "&H00000000&"
+
+    back = _css_to_ass_color(bg) if has_bg else "&H00000000&"
     bold = -1 if s.bold else 0
     italic = -1 if s.italic else 0
-    # \an mapping: left=4, center=5, right=6 (mid-row anchor for \pos)
     alignment = {"left": 4, "center": 5, "right": 6}.get(s.text_align or "center", 5)
+    spacing = s.letter_spacing or 0
+
+    # BorderStyle: 3 = opaque box (uses BackColour), 1 = outline + drop shadow
+    border_style = 3 if has_bg else 1
+    outline_width = s.outline_width or 0
+    shadow_dist = 0  # We use \pos for positioning; ASS shadow is a simple offset
 
     return (
         f"Style: {name},{s.font_family or 'sans-serif'},{s.font_size or 48},"
-        f"{primary},{secondary},{outline},{back},"
-        f"{bold},{italic},0,0,100,100,0,0,"
-        f"3,0,0,{alignment},0,0,0,1"
+        f"{primary},{secondary},{outline_color},{back},"
+        f"{bold},{italic},0,0,100,100,{spacing},0,"
+        f"{border_style},{outline_width},{shadow_dist},{alignment},0,0,0,1"
     )
 
 
 # ── public API ──────────────────────────────────────────────
 
 
-def generate_ass(timeline: TimelineProject, output_path: str) -> str | None:
+def generate_ass(
+    timeline: TimelineProject, output_path: str
+) -> str | None:
     """Generate an ASS subtitle file from timeline subtitle tracks.
 
+    Resolves subtitle style presets before generating.
     Returns *output_path* on success, ``None`` if no subtitles found.
     """
     W = timeline.project.width
     H = timeline.project.height
     media_map = {a.id: a for a in timeline.media_pool}
+
+    ensure_default_preset()
 
     styles: dict[str, tuple[str, SubtitleStyle]] = {}  # hash -> (name, style)
     dialogues: list[str] = []
@@ -173,7 +191,12 @@ def generate_ass(timeline: TimelineProject, output_path: str) -> str | None:
         if track.muted or track.type != "subtitle":
             continue
         for clip in track.clips:
-            style = clip.subtitle_style or SubtitleStyle()
+            # Resolve preset + per-clip override into a full style
+            if clip.subtitle_style_ref:
+                preset = load_preset(clip.subtitle_style_ref)
+                style = resolve_subtitle_style(preset, clip.subtitle_style)
+            else:
+                style = clip.subtitle_style or SubtitleStyle()
             sh = _style_hash(style)
             style_name = f"S_{sh}"
             if sh not in styles:

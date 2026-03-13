@@ -4,6 +4,7 @@ import TimelineCanvas from './TimelineCanvas';
 import TimelineClipLayer from './TimelineClipLayer';
 import TimelineTrackHeaders from './TimelineTrackHeaders';
 import { useTimelineDrag } from './useTimelineDrag';
+import { useMarqueeSelect } from './useMarqueeSelect';
 import {
   HEADER_WIDTH,
   RULER_HEIGHT,
@@ -35,6 +36,7 @@ interface TimelineEditorProps {
   onTimelineChange: (newTimeline: TimelineProject) => void;
   selectedClipIds: Set<string>;
   onSelectClip: (clipId: string, multi: boolean) => void;
+  onSetSelection: (clipIds: Set<string>) => void;
   onClearSelection: () => void;
 }
 
@@ -45,6 +47,7 @@ export default function TimelineEditor({
   onTimelineChange,
   selectedClipIds,
   onSelectClip,
+  onSetSelection,
   onClearSelection,
 }: TimelineEditorProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -73,6 +76,18 @@ export default function TimelineEditor({
     setSnapGuideTime,
     onSeek,
     selectedClipIds,
+  );
+
+  // Marquee selection
+  const { marqueeRect, startMarquee } = useMarqueeSelect(
+    timeline,
+    pixelsPerSec,
+    scrollRef,
+    scrollTop,
+    selectedClipIds,
+    onSetSelection,
+    onSeek,
+    clearSelection,
   );
 
   // Calculate canvas size
@@ -166,20 +181,12 @@ export default function TimelineEditor({
     }
   }, [currentTime, pixelsPerSec]);
 
-  // Click on empty area → seek
+  // Click/drag on empty area → marquee select (or click-to-seek if no drag)
   const handleBackgroundPointerDown = useCallback(
     (e: React.PointerEvent) => {
-      if (e.target !== e.currentTarget) return;
-      const scrollEl = scrollRef.current;
-      if (!scrollEl) return;
-      const rect = scrollEl.getBoundingClientRect();
-      const x = e.clientX - rect.left + scrollEl.scrollLeft - HEADER_WIDTH;
-      if (x >= 0) {
-        onSeek(Math.max(0, x / pixelsPerSec));
-      }
-      clearSelection();
+      startMarquee(e);
     },
-    [onSeek, pixelsPerSec, clearSelection],
+    [startMarquee],
   );
 
   // --- Media drag-and-drop from MediaPanel ---
@@ -237,7 +244,7 @@ export default function TimelineEditor({
       const raw = e.dataTransfer.getData('application/x-mrdv2-media');
       if (!raw) return;
 
-      const media: { name: string; path: string; type: string } = JSON.parse(raw);
+      const media: { name: string; path: string; type: string; duration?: number; width?: number; height?: number } = JSON.parse(raw);
       const target = calcDropTarget(e);
       if (!target) return;
 
@@ -278,9 +285,23 @@ export default function TimelineEditor({
         }
       }
 
+      // Auto-adapt project resolution to match the first video/image media
+      const isVisualMedia = media.type === 'video' || media.type === 'image';
+      if (isVisualMedia && media.width && media.height) {
+        const hasExistingVisual = updatedTimeline.media_pool.some(
+          (m) => m.type === 'video' || m.type === 'image',
+        );
+        if (!hasExistingVisual) {
+          updatedTimeline = {
+            ...updatedTimeline,
+            project: { ...updatedTimeline.project, width: media.width, height: media.height },
+          };
+        }
+      }
+
       const mediaId = generateMediaId(media.path);
-      const defaultDuration = 5;
       const isImageMedia = media.type === 'image';
+      const duration = media.duration ?? 5;
 
       const timelineStart = Math.max(0, target.timeSec);
       const clip = {
@@ -288,9 +309,9 @@ export default function TimelineEditor({
         type: clipType,
         media_id: mediaId,
         source_in_sec: 0,
-        ...(isImageMedia ? {} : { source_out_sec: defaultDuration }),
+        ...(isImageMedia ? {} : { source_out_sec: duration }),
         timeline_start_sec: timelineStart,
-        timeline_end_sec: timelineStart + defaultDuration,
+        timeline_end_sec: timelineStart + duration,
         speed: 1,
       };
 
@@ -298,6 +319,9 @@ export default function TimelineEditor({
         id: mediaId,
         path: media.path,
         type: media.type === 'audio' ? 'audio' as const : media.type === 'image' ? 'image' as const : 'video' as const,
+        ...(media.duration != null ? { duration_sec: media.duration } : {}),
+        ...(media.width != null ? { width: media.width } : {}),
+        ...(media.height != null ? { height: media.height } : {}),
       };
 
       onTimelineChange(addClipToTimeline(updatedTimeline, targetTrackId, clip, mediaAsset));
@@ -373,7 +397,6 @@ export default function TimelineEditor({
         ref={scrollRef}
         className="w-full h-full overflow-x-auto overflow-y-hidden relative"
         style={{ cursor: 'default' }}
-        onPointerDown={handleBackgroundPointerDown}
         onDragOver={handleDragOver}
         onDragEnter={handleDragEnter}
         onDragLeave={handleDragLeave}
@@ -399,6 +422,19 @@ export default function TimelineEditor({
           scrollTop={scrollTop}
         />
 
+        {/* Ruler click zone for seeking */}
+        <div
+          className="absolute left-0 top-0"
+          style={{
+            left: HEADER_WIDTH,
+            height: RULER_HEIGHT,
+            width: canvasWidth - HEADER_WIDTH,
+            zIndex: 20,
+            cursor: 'pointer',
+          }}
+          onPointerDown={handleBackgroundPointerDown}
+        />
+
         <TimelineClipLayer
           timeline={timeline}
           pixelsPerSec={pixelsPerSec}
@@ -419,8 +455,24 @@ export default function TimelineEditor({
           }
           onClipSelect={selectClip}
           onClipDragStart={startDrag}
-          onBackgroundClick={clearSelection}
+          onBackgroundPointerDown={handleBackgroundPointerDown}
         />
+
+        {/* Marquee selection overlay */}
+        {marqueeRect && (
+          <div
+            className="absolute pointer-events-none"
+            style={{
+              left: marqueeRect.x,
+              top: marqueeRect.y - scrollTop,
+              width: marqueeRect.width,
+              height: marqueeRect.height,
+              backgroundColor: 'rgba(59, 130, 246, 0.15)',
+              border: '1px solid rgba(59, 130, 246, 0.6)',
+              zIndex: 30,
+            }}
+          />
+        )}
 
         {/* Drop target visual feedback */}
         {dropTarget && (

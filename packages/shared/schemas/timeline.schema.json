@@ -106,8 +106,13 @@
           "type": "string",
           "description": "For subtitle clips - the text content to display"
         },
+        "subtitle_style_ref": {
+          "type": "string",
+          "description": "Reference to a subtitle style preset name (e.g. 'default'). Required for subtitle clips."
+        },
         "subtitle_style": {
-          "$ref": "#/$defs/SubtitleStyle"
+          "$ref": "#/$defs/SubtitleStyle",
+          "description": "Per-clip style overrides. Only set fields override the preset; unset fields inherit from the referenced preset."
         },
         "video_style": {
           "$ref": "#/$defs/VideoStyle"
@@ -116,32 +121,37 @@
     },
     "SubtitleStyle": {
       "type": "object",
+      "description": "Subtitle style properties. Used both as preset definitions (all fields set) and as per-clip overrides (only overridden fields set).",
       "properties": {
         "position_x": {
           "type": "number",
-          "default": 0.5,
           "minimum": 0,
           "maximum": 1,
           "description": "Horizontal center position as fraction of frame width (0=left, 1=right)"
         },
         "position_y": {
           "type": "number",
-          "default": 0.85,
           "minimum": 0,
           "maximum": 1,
           "description": "Vertical center position as fraction of frame height (0=top, 1=bottom)"
         },
-        "font_family": { "type": "string", "default": "sans-serif" },
-        "font_size": { "type": "integer", "default": 48 },
-        "color": { "type": "string", "default": "#FFFFFF" },
-        "background": { "type": "string", "default": "rgba(0,0,0,0.6)" },
+        "font_family": { "type": "string" },
+        "font_size": { "type": "integer" },
+        "color": { "type": "string", "description": "Text color (hex or CSS color)" },
+        "background": { "type": "string", "description": "Background color (rgba/hex/keywords)" },
         "text_align": {
           "type": "string",
-          "enum": ["left", "center", "right"],
-          "default": "center"
+          "enum": ["left", "center", "right"]
         },
-        "bold": { "type": "boolean", "default": false },
-        "italic": { "type": "boolean", "default": false }
+        "bold": { "type": "boolean" },
+        "italic": { "type": "boolean" },
+        "outline_color": { "type": "string", "description": "Text outline/stroke color" },
+        "outline_width": { "type": "number", "minimum": 0, "description": "Text outline/stroke width in pixels" },
+        "shadow": { "type": "string", "description": "CSS text-shadow value, e.g. '2px 2px 4px rgba(0,0,0,0.5)'" },
+        "padding": { "type": "string", "description": "CSS padding value, e.g. '4px 16px'" },
+        "border_radius": { "type": "number", "minimum": 0, "description": "Background border radius in pixels" },
+        "opacity": { "type": "number", "minimum": 0, "maximum": 1, "description": "Overall opacity (0=transparent, 1=opaque)" },
+        "letter_spacing": { "type": "number", "description": "Letter spacing in pixels" }
       }
     },
     "VideoStyle": {

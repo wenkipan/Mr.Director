@@ -1,11 +1,15 @@
 import { create } from 'zustand';
-import type { TimelineProject, MediaAsset } from '@mrdv2/shared';
+import type { TimelineProject, MediaAsset, SubtitleStyle } from '@mrdv2/shared';
+import { fetchSubtitlePresets } from '../lib/api';
 
 export interface MediaFileInfo {
   name: string;
   path: string;
   size?: number;
   mime_type?: string;
+  duration?: number;
+  width?: number;
+  height?: number;
   type: 'video' | 'audio' | 'image' | 'directory';
 }
 
@@ -83,6 +87,11 @@ interface AppStore {
   onAgentDone: () => void;
   onAgentAborted: () => void;
   archiveAgentProgress: () => { toolCalls?: ToolCallProgress[]; reasonings?: string[] };
+
+  // Subtitle style presets
+  subtitlePresets: Record<string, SubtitleStyle>;
+  loadSubtitlePresets: () => Promise<void>;
+  setSubtitlePresets: (presets: Record<string, SubtitleStyle>) => void;
 
   // Project
   projectId: string | null;
@@ -253,6 +262,18 @@ export const useAppStore = create<AppStore>((set, get) => ({
     set({ agentProgress: { isActive: false, toolCalls: [], reasonings: [] } });
     return snapshot;
   },
+
+  // Subtitle style presets
+  subtitlePresets: {},
+  loadSubtitlePresets: async () => {
+    try {
+      const data = await fetchSubtitlePresets();
+      set({ subtitlePresets: data.presets });
+    } catch (e) {
+      console.error('Failed to load subtitle presets:', e);
+    }
+  },
+  setSubtitlePresets: (presets) => set({ subtitlePresets: presets }),
 
   // Project
   projectId: localStorage.getItem('mrdv2_projectId'),

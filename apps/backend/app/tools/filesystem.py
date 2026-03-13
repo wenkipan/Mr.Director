@@ -17,7 +17,11 @@ ALLOWED_EXTENSIONS = {
 
 @registry.register(
     name="list_files",
-    description="List files in a directory. Can filter by extension. Returns file names, sizes, and types.",
+    description=(
+        "List files in a directory. Filter by extension. Returns names, sizes, and types. "
+        "\n\nWhen to use: discovering available media before starting an edit, checking for existing _analysis.md files. "
+        "When NOT to use: reading file contents (use read_file), getting media metadata like duration/resolution (use run_shell with ffprobe)."
+    ),
     parameters={
         "type": "OBJECT",
         "properties": {
@@ -68,7 +72,12 @@ async def list_files(args: dict, state) -> dict:
 
 @registry.register(
     name="read_file",
-    description="Read the content of a text file (txt, json, srt, vtt, etc.).",
+    description=(
+        "Read a text file's content (txt, json, srt, vtt, ass, md, etc.). Truncated at 50KB. "
+        "\n\nWhen to use: reading _analysis.md for cached analysis results, inspecting SRT/ASS subtitle files, "
+        "reading project JSON. "
+        "When NOT to use: getting media file metadata (use run_shell with ffprobe)."
+    ),
     parameters={
         "type": "OBJECT",
         "properties": {
@@ -96,7 +105,11 @@ async def read_file(args: dict, state) -> dict:
 
 @registry.register(
     name="write_file",
-    description="Write content to a text file. Used for saving analysis results or other artifacts.",
+    description=(
+        "Write content to a text file. Creates parent directories if needed. "
+        "\n\nWhen to use: saving analysis notes, creating custom subtitle files, writing project artifacts. "
+        "When NOT to use: modifying the timeline (use timeline tools), exporting (use export_timeline)."
+    ),
     parameters={
         "type": "OBJECT",
         "properties": {

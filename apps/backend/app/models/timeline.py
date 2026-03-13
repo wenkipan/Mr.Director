@@ -1,16 +1,64 @@
+from __future__ import annotations
+
 from pydantic import BaseModel, Field
 
 
 class SubtitleStyle(BaseModel):
-    position_x: float = 0.5
-    position_y: float = 0.85
-    font_family: str = "sans-serif"
-    font_size: int = 48
-    color: str = "#FFFFFF"
-    background: str = "rgba(0,0,0,0.6)"
-    text_align: str = "center"  # "left" | "center" | "right"
-    bold: bool = False
-    italic: bool = False
+    """Subtitle style properties.
+
+    All fields are Optional so the same model works for both:
+    - Preset definitions (all fields set, stored in styles/*.json)
+    - Per-clip overrides (only overridden fields set, stored on Clip)
+    """
+
+    position_x: float | None = None
+    position_y: float | None = None
+    font_family: str | None = None
+    font_size: int | None = None
+    color: str | None = None
+    background: str | None = None
+    text_align: str | None = None  # "left" | "center" | "right"
+    bold: bool | None = None
+    italic: bool | None = None
+    # Extended style properties
+    outline_color: str | None = None
+    outline_width: float | None = None
+    shadow: str | None = None  # CSS text-shadow value
+    padding: str | None = None  # CSS padding value
+    border_radius: float | None = None
+    opacity: float | None = None
+    letter_spacing: float | None = None
+
+
+DEFAULT_SUBTITLE_STYLE = SubtitleStyle(
+    position_x=0.5,
+    position_y=0.85,
+    font_family="sans-serif",
+    font_size=48,
+    color="#FFFFFF",
+    background="rgba(0,0,0,0.6)",
+    text_align="center",
+    bold=False,
+    italic=False,
+    outline_color="transparent",
+    outline_width=0,
+    shadow="none",
+    padding="4px 16px",
+    border_radius=4,
+    opacity=1.0,
+    letter_spacing=0,
+)
+
+
+def resolve_subtitle_style(
+    preset: SubtitleStyle, override: SubtitleStyle | None = None
+) -> SubtitleStyle:
+    """Merge preset base with per-clip overrides. Non-None override fields win."""
+    base = preset.model_dump()
+    if override:
+        for key, value in override.model_dump(exclude_none=True).items():
+            base[key] = value
+    return SubtitleStyle(**base)
 
 
 class VideoStyle(BaseModel):
@@ -37,7 +85,8 @@ class Clip(BaseModel):
     timeline_end_sec: float
     speed: float = 1.0
     subtitle_text: str | None = None
-    subtitle_style: SubtitleStyle | None = None
+    subtitle_style_ref: str | None = None  # preset name, e.g. "default"
+    subtitle_style: SubtitleStyle | None = None  # per-clip overrides
     video_style: VideoStyle | None = None
 
 

@@ -1,9 +1,46 @@
 import { AbsoluteFill, Sequence, Video, OffthreadVideo, Audio, Img, useVideoConfig, useCurrentFrame } from 'remotion';
 import type { TimelineProject, Clip as ClipType, VideoStyle, SubtitleStyle } from '@mrdv2/shared';
+import { resolveSubtitleStyle, DEFAULT_SUBTITLE_STYLE } from '@mrdv2/shared';
 import { resolveMediaUrl, getMediaType } from '../lib/timelineAdapter';
 import { parseSrt, type SrtEntry } from '../lib/srtParser';
 import { useEffect, useState } from 'react';
 import { EditableText } from './EditableText';
+import { useAppStore } from '../stores/appStore';
+
+/** Build CSS properties from a fully resolved SubtitleStyle. */
+function subtitleStyleToCss(s: Required<SubtitleStyle>): React.CSSProperties {
+  const bg = s.background;
+  const hasBg = bg && bg !== 'transparent';
+  return {
+    position: 'absolute',
+    left: `${(s.position_x * 100).toFixed(1)}%`,
+    top: `${(s.position_y * 100).toFixed(1)}%`,
+    transform: 'translate(-50%, -50%)',
+    fontFamily: s.font_family,
+    fontSize: s.font_size,
+    color: s.color,
+    backgroundColor: bg,
+    textAlign: s.text_align as React.CSSProperties['textAlign'],
+    fontWeight: s.bold ? 'bold' : 'normal',
+    fontStyle: s.italic ? 'italic' : 'normal',
+    padding: hasBg ? s.padding : undefined,
+    borderRadius: hasBg ? s.border_radius : undefined,
+    maxWidth: '80%',
+    whiteSpace: 'pre-wrap',
+    opacity: s.opacity,
+    letterSpacing: s.letter_spacing !== 0 ? s.letter_spacing : undefined,
+    WebkitTextStroke: s.outline_width > 0 ? `${s.outline_width}px ${s.outline_color}` : undefined,
+    textShadow: s.shadow !== 'none' ? s.shadow : undefined,
+  };
+}
+
+/** Resolve a clip's subtitle style using presets from the store. */
+function useResolvedStyle(clip: ClipType): Required<SubtitleStyle> {
+  const presets = useAppStore((s) => s.subtitlePresets);
+  const presetName = clip.subtitle_style_ref ?? 'default';
+  const preset = presets[presetName] ?? DEFAULT_SUBTITLE_STYLE;
+  return resolveSubtitleStyle(preset, clip.subtitle_style);
+}
 
 /** Renders a single SRT-backed subtitle clip, fetching & parsing the .srt file.
  *  In SSR mode, clip._srt_content is pre-populated by the backend so no fetch is needed. */
@@ -12,15 +49,14 @@ const SrtSubtitleClip: React.FC<{
   timeline: TimelineProject;
   fps: number;
 }> = ({ clip, timeline, fps }) => {
-  const frame = useCurrentFrame(); // frame relative to this Sequence
+  const frame = useCurrentFrame();
+  const resolved = useResolvedStyle(clip);
   const [entries, setEntries] = useState<SrtEntry[]>([]);
 
-  // SSR mode: backend injects raw SRT content directly into the clip
   const inlineSrt = (clip as any)._srt_content as string | undefined;
   const mediaUrl = clip.media_id ? resolveMediaUrl(clip.media_id, timeline) : '';
 
   useEffect(() => {
-    // If inline SRT content is available (SSR mode), parse it directly
     if (inlineSrt) {
       setEntries(parseSrt(inlineSrt));
       return;
@@ -35,38 +71,39 @@ const SrtSubtitleClip: React.FC<{
       .catch((err) => console.warn('SRT fetch error:', err));
   }, [mediaUrl, inlineSrt]);
 
-  // Current source time in the SRT file
   const sourceTime = (clip.source_in_sec ?? 0) + (frame / fps) * (clip.speed ?? 1);
-
-  // Find the entry that covers the current source time
   const active = entries.find((e) => sourceTime >= e.startSec && sourceTime < e.endSec);
   if (!active) return null;
 
-  const style = clip.subtitle_style;
+  return (
+    <AbsoluteFill>
+      <div style={subtitleStyleToCss(resolved)}>
+        {active.text}
+      </div>
+    </AbsoluteFill>
+  );
+};
+
+/** Renders a single inline subtitle clip with resolved preset + override style. */
+const InlineSubtitleClip: React.FC<{
+  clip: ClipType;
+  isSSR: boolean;
+}> = ({ clip, isSSR }) => {
+  const resolved = useResolvedStyle(clip);
+  const textCss = subtitleStyleToCss(resolved);
 
   return (
     <AbsoluteFill>
-      <div
-        style={{
-          position: 'absolute',
-          left: `${((style?.position_x ?? 0.5) * 100).toFixed(1)}%`,
-          top: `${((style?.position_y ?? 0.85) * 100).toFixed(1)}%`,
-          transform: 'translate(-50%, -50%)',
-          fontFamily: style?.font_family ?? 'sans-serif',
-          fontSize: style?.font_size ?? 48,
-          color: style?.color ?? '#FFFFFF',
-          backgroundColor: style?.background ?? 'rgba(0,0,0,0.6)',
-          textAlign: (style?.text_align ?? 'center') as React.CSSProperties['textAlign'],
-          fontWeight: style?.bold ? 'bold' : 'normal',
-          fontStyle: style?.italic ? 'italic' : 'normal',
-          padding: '4px 16px',
-          borderRadius: 4,
-          maxWidth: '80%',
-          whiteSpace: 'pre-wrap',
-        }}
-      >
-        {active.text}
-      </div>
+      {isSSR ? (
+        <div style={textCss}>{clip.subtitle_text}</div>
+      ) : (
+        <EditableText
+          clipId={clip.id}
+          field="subtitle_text"
+          text={clip.subtitle_text!}
+          style={textCss}
+        />
+      )}
     </AbsoluteFill>
   );
 };
@@ -257,27 +294,6 @@ export const TimelineComposition: React.FC<TimelineCompositionProps> = ({ timeli
 
               // Inline subtitle text
               if (!clip.subtitle_text) return null;
-              const style = clip.subtitle_style;
-              const bg = style?.background ?? 'rgba(0,0,0,0.6)';
-              const hasBg = bg && bg !== 'transparent';
-
-              const textCss: React.CSSProperties = {
-                position: 'absolute',
-                left: `${((style?.position_x ?? 0.5) * 100).toFixed(1)}%`,
-                top: `${((style?.position_y ?? 0.85) * 100).toFixed(1)}%`,
-                transform: 'translate(-50%, -50%)',
-                fontFamily: style?.font_family ?? 'sans-serif',
-                fontSize: style?.font_size ?? 48,
-                color: style?.color ?? '#FFFFFF',
-                backgroundColor: bg,
-                textAlign: (style?.text_align ?? 'center') as React.CSSProperties['textAlign'],
-                fontWeight: style?.bold ? 'bold' : 'normal',
-                fontStyle: style?.italic ? 'italic' : 'normal',
-                padding: hasBg ? '4px 16px' : undefined,
-                borderRadius: hasBg ? 4 : undefined,
-                maxWidth: '80%',
-                whiteSpace: 'pre-wrap',
-              };
 
               return (
                 <Sequence
@@ -285,18 +301,7 @@ export const TimelineComposition: React.FC<TimelineCompositionProps> = ({ timeli
                   from={startFrame}
                   durationInFrames={durationFrames}
                 >
-                  <AbsoluteFill>
-                    {(timeline as any)._ssr ? (
-                      <div style={textCss}>{clip.subtitle_text}</div>
-                    ) : (
-                      <EditableText
-                        clipId={clip.id}
-                        field="subtitle_text"
-                        text={clip.subtitle_text}
-                        style={textCss}
-                      />
-                    )}
-                  </AbsoluteFill>
+                  <InlineSubtitleClip clip={clip} isSSR={!!(timeline as any)._ssr} />
                 </Sequence>
               );
             }),

@@ -126,7 +126,7 @@ export default function MediaPanel() {
               }
               e.dataTransfer.setData(
                 'application/x-mrdv2-media',
-                JSON.stringify({ name: file.name, path: file.path, type: file.type }),
+                JSON.stringify({ name: file.name, path: file.path, type: file.type, duration: file.duration, width: file.width, height: file.height }),
               );
               e.dataTransfer.effectAllowed = 'copy';
               (e.currentTarget as HTMLElement).style.opacity = '0.4';

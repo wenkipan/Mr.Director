@@ -9,6 +9,7 @@ export const ZOOM_FACTOR = 1.15;
 export const CLIP_PADDING = 4;
 export const TRIM_HANDLE_WIDTH = 6;
 export const SNAP_THRESHOLD_PX = 5;
+export const MARQUEE_THRESHOLD_PX = 3;
 export const MIN_CLIP_DURATION_SEC = 0.1;
 
 export const TRACK_COLORS: Record<string, string> = {
