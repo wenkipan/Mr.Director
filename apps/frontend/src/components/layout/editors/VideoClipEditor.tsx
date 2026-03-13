@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { Clip, VideoStyle } from '@mrdv2/shared';
 import SpeedControl from './SpeedControl';
+import VolumeControl from './VolumeControl';
 
 interface VideoClipEditorProps {
   clip: Clip;
@@ -63,6 +64,11 @@ export default function VideoClipEditor({ clip, onUpdate, batchMode }: VideoClip
       {/* Speed — only for media clips with source range (hidden in batch mode) */}
       {!batchMode && clip.source_in_sec != null && clip.source_out_sec != null && (
         <SpeedControl clip={clip} onSpeedChange={(v) => onUpdate({ speed: v })} />
+      )}
+
+      {/* Volume */}
+      {!batchMode && (
+        <VolumeControl clip={clip} onVolumeChange={(v) => onUpdate({ volume: v })} />
       )}
 
       {/* Position */}

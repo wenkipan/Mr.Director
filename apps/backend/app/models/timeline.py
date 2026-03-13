@@ -84,6 +84,7 @@ class Clip(BaseModel):
     timeline_start_sec: float
     timeline_end_sec: float
     speed: float = 1.0
+    volume: float = 1.0
     subtitle_text: str | None = None
     subtitle_style_ref: str | None = None  # preset name, e.g. "default"
     subtitle_style: SubtitleStyle | None = None  # per-clip overrides

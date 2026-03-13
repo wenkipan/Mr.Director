@@ -5,6 +5,7 @@ import { findClipById, updateClipInTimeline, updateClipsInTimeline } from '../ti
 import SubtitleClipEditor from './editors/SubtitleClipEditor';
 import VideoClipEditor from './editors/VideoClipEditor';
 import SpeedControl from './editors/SpeedControl';
+import VolumeControl from './editors/VolumeControl';
 import type { Clip, TimelineProject } from '@mrdv2/shared';
 
 export default function ClipPropertiesEditor() {
@@ -188,8 +189,13 @@ export default function ClipPropertiesEditor() {
         {clipType === 'video' && (
           <VideoClipEditor clip={representativeClip} onUpdate={handleClipUpdate} batchMode={isBatch} />
         )}
-        {clipType === 'audio' && !isBatch && representativeClip.source_in_sec != null && representativeClip.source_out_sec != null && (
-          <SpeedControl clip={representativeClip} onSpeedChange={(v) => handleClipUpdate({ speed: v })} />
+        {clipType === 'audio' && !isBatch && (
+          <>
+            <VolumeControl clip={representativeClip} onVolumeChange={(v) => handleClipUpdate({ volume: v })} />
+            {representativeClip.source_in_sec != null && representativeClip.source_out_sec != null && (
+              <SpeedControl clip={representativeClip} onSpeedChange={(v) => handleClipUpdate({ speed: v })} />
+            )}
+          </>
         )}
       </div>
     </div>

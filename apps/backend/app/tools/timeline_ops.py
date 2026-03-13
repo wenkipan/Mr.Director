@@ -264,7 +264,7 @@ def _exec_add(timeline: TimelineProject, op: dict) -> dict:
         "speed": speed,
     }
     # Optional fields
-    for key in ("subtitle_text", "subtitle_style_ref", "subtitle_style", "video_style"):
+    for key in ("volume", "subtitle_text", "subtitle_style_ref", "subtitle_style", "video_style"):
         if op.get(key) is not None:
             clip_data[key] = op[key]
     # Default style ref for subtitle clips
@@ -292,7 +292,7 @@ def _exec_update(timeline: TimelineProject, op: dict) -> dict:
     track, clip = found
 
     # Updatable scalar fields
-    SCALAR_FIELDS = {"source_in_sec", "source_out_sec", "timeline_start_sec", "timeline_end_sec", "speed"}
+    SCALAR_FIELDS = {"source_in_sec", "source_out_sec", "timeline_start_sec", "timeline_end_sec", "speed", "volume"}
     for field in SCALAR_FIELDS:
         if field in op:
             setattr(clip, field, float(op[field]) if op[field] is not None else None)

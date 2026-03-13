@@ -188,6 +188,7 @@ const VideoClipRenderer: React.FC<{
         startFrom={Math.round((clip.source_in_sec ?? 0) * fps)}
         playbackRate={clip.speed ?? 1}
         style={videoStyle}
+        volume={clip.volume ?? 1}
       />
     </div>
   );
@@ -262,6 +263,7 @@ export const TimelineComposition: React.FC<TimelineCompositionProps> = ({ timeli
                     src={mediaUrl}
                     startFrom={Math.round((clip.source_in_sec ?? 0) * fps)}
                     playbackRate={clip.speed ?? 1}
+                    volume={clip.volume ?? 1}
                   />
                 </Sequence>
               );

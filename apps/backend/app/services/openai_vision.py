@@ -25,8 +25,17 @@ class OpenAIVisionClient:
             kwargs["base_url"] = base_url
         self.client = OpenAI(**kwargs)
         self.model = model
-        # Use Files API only when talking to the official endpoint (no proxy)
-        self._use_files_api = not base_url
+        self._use_files_api = self._probe_files_api()
+
+    def _probe_files_api(self) -> bool:
+        """Send a lightweight request to check if the endpoint supports /v1/files."""
+        try:
+            self.client.files.list(limit=1)
+            logger.info("Files API probe succeeded — will use /v1/files for uploads")
+            return True
+        except Exception as e:
+            logger.info("Files API probe failed (%s) — will use base64 inline", e)
+            return False
 
     def analyze(self, file_path: Path, prompt: str, is_video: bool = True) -> str:
         """Analyze a file (video or image) and return the model's text response."""

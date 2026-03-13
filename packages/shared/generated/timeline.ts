@@ -82,6 +82,10 @@ export interface Clip {
    */
   speed?: number;
   /**
+   * Audio volume multiplier. 0=mute, 1=original, 2=boost
+   */
+  volume?: number;
+  /**
    * For subtitle clips - the text content to display
    */
   subtitle_text?: string;

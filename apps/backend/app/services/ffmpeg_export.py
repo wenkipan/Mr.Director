@@ -306,6 +306,9 @@ def _build_filter_complex(
             )
             if clip.speed and clip.speed != 1.0:
                 chain += _atempo_chain(clip.speed)
+            vol = clip.volume if clip.volume is not None else 1.0
+            if abs(vol - 1.0) > 1e-6:
+                chain += f",volume={vol:.4f}"
             chain += f",adelay={delay}|{delay}[a{idx}]"
             filter_lines.append(chain)
 
