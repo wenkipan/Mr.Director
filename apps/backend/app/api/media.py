@@ -194,16 +194,12 @@ async def get_waveform(
 
     # Evict oldest entries if cache exceeds 100 items
     if len(_waveform_cache) > 100:
-        oldest_key = next(iter(_waveform_cache))
+        oldest_key = next(iter(_waveform_cache.keys()))
         del _waveform_cache[oldest_key]
 
     try:
-        # Probe duration first, then compute peak count from temporal resolution
-        duration = _probe_media(str(file_path)).get("duration")
-        if duration is None or duration <= 0:
-            raise RuntimeError("Could not determine media duration")
-        num_peaks = max(1, int(duration * peaks_per_sec))
-        peaks, actual_duration = _generate_peaks(str(file_path), num_peaks)
+        # Instead of computing num_peaks from probed duration, pass peaks_per_sec directly.
+        peaks, actual_duration = _generate_peaks(str(file_path), peaks_per_sec)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Waveform generation failed: {e}")
 
@@ -216,7 +212,7 @@ async def get_waveform(
     return result
 
 
-def _generate_peaks(path: str, num_peaks: int) -> tuple[list[float], float]:
+def _generate_peaks(path: str, peaks_per_sec: int) -> tuple[list[float], float]:
     """Extract audio peaks using ffmpeg. Returns (peaks, duration_sec)."""
     sample_rate = 8000
     result = subprocess.run(
@@ -236,25 +232,23 @@ def _generate_peaks(path: str, num_peaks: int) -> tuple[list[float], float]:
 
     raw = result.stdout
     if len(raw) < 4:
-        return [0.0] * num_peaks, 0.0
+        # Ensure we return at least one point so frontend doesn't crash
+        return [0.0], 0.0
 
     # Parse raw f32le samples
     num_samples = len(raw) // 4
     duration = num_samples / sample_rate
     samples = struct.unpack(f"<{num_samples}f", raw[:num_samples * 4])
 
-    # Chunk samples into num_peaks buckets, take max absolute value per bucket
-    chunk_size = max(1, num_samples // num_peaks)
+    # Chunk samples strictly based on sample_rate and peaks_per_sec
+    chunk_size = max(1, sample_rate // peaks_per_sec)
     peaks: list[float] = []
+    
+    # samples is a tuple of floats
     for i in range(0, num_samples, chunk_size):
-        chunk = samples[i:i + chunk_size]
-        peak = max(abs(s) for s in chunk)
+        end_idx = min(i + chunk_size, num_samples)
+        chunk = samples[i:end_idx]
+        peak = max((abs(s) for s in chunk), default=0.0)
         peaks.append(min(peak, 1.0))
-
-    # Trim or pad to exact num_peaks
-    if len(peaks) > num_peaks:
-        peaks = peaks[:num_peaks]
-    elif len(peaks) < num_peaks:
-        peaks.extend([0.0] * (num_peaks - len(peaks)))
 
     return peaks, duration

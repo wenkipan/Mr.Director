@@ -5,6 +5,7 @@ import TimelineClipLayer from './TimelineClipLayer';
 import TimelineTrackHeaders from './TimelineTrackHeaders';
 import { useTimelineDrag } from './useTimelineDrag';
 import { useMarqueeSelect } from './useMarqueeSelect';
+import { useClipboardStore } from '../../stores/clipboardStore';
 import {
   HEADER_WIDTH,
   RULER_HEIGHT,
@@ -20,6 +21,7 @@ import {
   removeClipsFromTimeline,
   splitClipInTimeline,
   generateClipId,
+  findClipById,
   generateMediaId,
   addClipToTimeline,
   addTrackToTimeline,
@@ -59,6 +61,7 @@ export default function TimelineEditor({
   const [scrollTop, setScrollTop] = useState(0);
   const [dropTarget, setDropTarget] = useState<{ trackIndex: number; timeSec: number } | null>(null);
   const dragEnterCountRef = useRef(0);
+  const { copiedClips, copyClips } = useClipboardStore();
 
   const [pixelsPerSec, setPixelsPerSec] = useState(DEFAULT_PIXELS_PER_SEC);
   const totalDuration = useMemo(() => calcTotalDuration(timeline), [timeline]);
@@ -381,6 +384,80 @@ export default function TimelineEditor({
           clearSelection();
         }
       }
+
+      // Ctrl+C: Copy selected clips
+      if (e.key === 'c' && isModKey && !e.shiftKey) {
+        if (selectedClipIds.size > 0) {
+          e.preventDefault();
+          const toCopy = [];
+          for (const id of selectedClipIds) {
+            const found = findClipById(timeline, id);
+            if (found) {
+              toCopy.push({ clip: found.clip, originalTrackId: found.trackId });
+            }
+          }
+          if (toCopy.length > 0) {
+            copyClips(toCopy);
+          }
+        }
+      }
+
+      // Ctrl+V: Paste copied clips at playhead
+      if (e.key === 'v' && isModKey && !e.shiftKey) {
+        if (copiedClips.length > 0) {
+          e.preventDefault();
+          let earliestStart = Infinity;
+          for (const item of copiedClips) {
+            if (item.clip.timeline_start_sec < earliestStart) {
+              earliestStart = item.clip.timeline_start_sec;
+            }
+          }
+
+          let updatedTimeline = timeline;
+          const newSelectedIds = new Set<string>();
+
+          for (const item of copiedClips) {
+            const timeOffset = item.clip.timeline_start_sec - earliestStart;
+            const newStart = Math.max(0, currentTime + timeOffset);
+            const duration = item.clip.timeline_end_sec - item.clip.timeline_start_sec;
+
+            const newClip = {
+              ...item.clip,
+              id: generateClipId(),
+              timeline_start_sec: newStart,
+              timeline_end_sec: newStart + duration,
+            };
+
+            let targetTrackId = item.originalTrackId;
+            let targetTrack = updatedTimeline.tracks.find(t => t.id === targetTrackId);
+
+            if (!targetTrack || targetTrack.locked || targetTrack.type !== newClip.type) {
+              targetTrack = updatedTimeline.tracks.find(t => t.type === newClip.type && !t.locked);
+              if (targetTrack) {
+                targetTrackId = targetTrack.id;
+              } else {
+                targetTrackId = generateTrackId();
+                const count = updatedTimeline.tracks.filter((t) => t.type === newClip.type).length + 1;
+                const name = `${newClip.type.charAt(0).toUpperCase() + newClip.type.slice(1)} ${count}`;
+                updatedTimeline = addTrackToTimeline(updatedTimeline, {
+                  id: targetTrackId,
+                  name,
+                  type: newClip.type,
+                  locked: false,
+                  muted: false,
+                  clips: [],
+                });
+              }
+            }
+
+            updatedTimeline = addClipToTimeline(updatedTimeline, targetTrackId, newClip);
+            newSelectedIds.add(newClip.id);
+          }
+
+          onTimelineChange(updatedTimeline);
+          onSetSelection(newSelectedIds);
+        }
+      }
     };
 
     el.addEventListener('keydown', handleKeyDown);
@@ -444,13 +521,13 @@ export default function TimelineEditor({
           dragState={
             dragVisualState
               ? {
-                  clipId: dragVisualState.clipId,
-                  dragType: dragVisualState.dragType,
-                  offsetPx: dragVisualState.offsetPx,
-                  widthPx: dragVisualState.widthPx,
-                  leftPx: dragVisualState.leftPx,
-                  isMultiMove: dragVisualState.isMultiMove,
-                }
+                clipId: dragVisualState.clipId,
+                dragType: dragVisualState.dragType,
+                offsetPx: dragVisualState.offsetPx,
+                widthPx: dragVisualState.widthPx,
+                leftPx: dragVisualState.leftPx,
+                isMultiMove: dragVisualState.isMultiMove,
+              }
               : null
           }
           onClipSelect={selectClip}

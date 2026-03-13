@@ -90,9 +90,9 @@ def _parse_css_color(css: str) -> tuple[int, int, int, float]:
         return (r, g, b, a)
 
     # #RRGGBB or #RRGGBBAA
-    m = re.match(r"#([0-9a-fA-F]{6,8})", css)
-    if m:
-        h = m.group(1)
+    m2 = re.match(r"#([0-9a-fA-F]{6,8})", css)
+    if m2:
+        h = m2.group(1)
         r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
         a = int(h[6:8], 16) / 255.0 if len(h) == 8 else 1.0
         return (r, g, b, a)
@@ -159,8 +159,14 @@ def _build_style_line(name: str, s: SubtitleStyle) -> str:
     outline_width = s.outline_width or 0
     shadow_dist = 0  # We use \pos for positioning; ASS shadow is a simple offset
 
+    # ASS Fontsize represents the absolute bounding box (ascender to descender),
+    # whereas CSS font-size represents the Em-square. A ~1.3333x (4/3) scale
+    # perfectly matches the CSS visual size in libass.
+    base_font_size = s.font_size or 48
+    ass_font_size = int(round(base_font_size * 1.3333))
+
     return (
-        f"Style: {name},{s.font_family or 'sans-serif'},{s.font_size or 48},"
+        f"Style: {name},{s.font_family or 'sans-serif'},{ass_font_size},"
         f"{primary},{secondary},{outline_color},{back},"
         f"{bold},{italic},0,0,100,100,{spacing},0,"
         f"{border_style},{outline_width},{shadow_dist},{alignment},0,0,0,1"
