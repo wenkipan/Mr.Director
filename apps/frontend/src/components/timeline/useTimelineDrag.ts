@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import type { Clip, TimelineProject } from '@mrdv2/shared';
 import type { DragType } from './TimelineClip';
+import { useAppStore } from '../../stores/appStore';
 import {
   HEADER_WIDTH,
   MIN_CLIP_DURATION_SEC,
@@ -54,7 +55,6 @@ interface InternalDragState {
 export function useTimelineDrag(
   timeline: TimelineProject,
   pixelsPerSec: number,
-  currentTime: number,
   onTimelineChange: (newTimeline: TimelineProject) => void,
   onSnapGuide: (timeSec: number | null) => void,
   onSeek: (timeSec: number) => void,
@@ -64,7 +64,7 @@ export function useTimelineDrag(
   const dragRef = useRef<InternalDragState | null>(null);
   const visualRef = useRef<DragVisualState | null>(null);
   const timelineRef = useRef(timeline);
-  const currentTimeRef = useRef(currentTime);
+  const currentTimeRef = useRef(0);
   const onTimelineChangeRef = useRef(onTimelineChange);
   const onSnapGuideRef = useRef(onSnapGuide);
   const onSeekRef = useRef(onSeek);
@@ -72,12 +72,22 @@ export function useTimelineDrag(
   const selectedClipIdsRef = useRef(selectedClipIds);
 
   timelineRef.current = timeline;
-  currentTimeRef.current = currentTime;
   onTimelineChangeRef.current = onTimelineChange;
   onSnapGuideRef.current = onSnapGuide;
   onSeekRef.current = onSeek;
   pixelsPerSecRef.current = pixelsPerSec;
   selectedClipIdsRef.current = selectedClipIds;
+
+  // Sync currentTimeRef from store without causing re-renders
+  const fpsRef = useRef(timeline.project.fps || 30);
+  fpsRef.current = timeline.project.fps || 30;
+  useEffect(() => {
+    currentTimeRef.current = useAppStore.getState().currentFrame / fpsRef.current;
+    const unsub = useAppStore.subscribe((state) => {
+      currentTimeRef.current = state.currentFrame / fpsRef.current;
+    });
+    return unsub;
+  }, []);
 
   /** Compute snap targets on the fly, excluding all moving clips */
   const computeSnap = useCallback((timeSec: number): { snappedTime: number; didSnap: boolean } => {

@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useRef, memo } from 'react';
 import type { Clip } from '@mrdv2/shared';
 import { TRACK_COLORS, CLIP_PADDING, TRIM_HANDLE_WIDTH } from './timelineConstants';
 import { hitTestClipRegion } from './timelineUtils';
@@ -28,7 +28,7 @@ interface TimelineClipProps {
   onDragStart: (clipId: string, type: DragType, pointerX: number) => void;
 }
 
-export default function TimelineClip({
+export default memo(function TimelineClip({
   clip,
   trackType,
   mediaName,
@@ -157,4 +157,4 @@ export default function TimelineClip({
       />
     </div>
   );
-}
+});

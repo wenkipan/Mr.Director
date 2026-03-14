@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useAppStore } from '../../stores/appStore';
-import { listProjects, createProject, getProject, renameProject, startExport, getExportStatus, exportInterchange, getGpuStatus, type GpuStatus } from '../../lib/api';
+import { listProjects, createProject, getProject, renameProject, startExport, getExportStatus, exportInterchange, exportAss, getGpuStatus, type GpuStatus } from '../../lib/api';
 import ExportProgressModal from './ExportProgressModal';
 
 type ExportStatus = 'idle' | 'queued' | 'rendering' | 'completed' | 'error';
@@ -117,6 +117,16 @@ export default function Toolbar() {
       await exportInterchange(projectId, format);
     } catch (e: any) {
       setExportState({ exportId: null, status: 'error', progress: 0, error: e.message || `Failed to export ${format}` });
+    }
+  }, [projectId]);
+
+  const handleExportAss = useCallback(async () => {
+    if (!projectId) return;
+    setDropdownOpen(false);
+    try {
+      await exportAss(projectId);
+    } catch (e: any) {
+      setExportState({ exportId: null, status: 'error', progress: 0, error: e.message || 'Failed to export ASS' });
     }
   }, [projectId]);
 
@@ -366,6 +376,12 @@ export default function Toolbar() {
                 className="w-full text-left px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-700 transition-colors"
               >
                 Export FCPXML
+              </button>
+              <button
+                onClick={handleExportAss}
+                className="w-full text-left px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-700 transition-colors"
+              >
+                Export ASS subtitle
               </button>
             </div>
           )}

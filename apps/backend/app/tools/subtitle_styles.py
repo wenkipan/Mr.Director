@@ -42,7 +42,13 @@ from app.tools.registry import registry
                     "JSON object with style properties for create/update. "
                     "Available properties: position_x, position_y, font_family, font_size, "
                     "color, background, text_align, bold, italic, outline_color, outline_width, "
-                    "shadow, padding, border_radius, opacity, letter_spacing"
+                    "shadow, padding, border_radius, opacity, letter_spacing. "
+                    "Supported font_family values: sans-serif, serif, monospace (generic), "
+                    "arial, times-new-roman, courier-new, georgia, impact (system), "
+                    "noto-sans, noto-serif, noto-sans-sc, noto-sans-tc, noto-sans-jp (Noto/CJK), "
+                    "roboto, inter, open-sans, montserrat, poppins, lato (Google sans-serif), "
+                    "merriweather, playfair-display (Google serif), "
+                    "oswald, bebas-neue (Google display)."
                 ),
             },
         },

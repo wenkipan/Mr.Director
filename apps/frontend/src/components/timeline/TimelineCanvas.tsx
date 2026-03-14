@@ -1,5 +1,6 @@
 import { useRef, useEffect } from 'react';
 import type { TimelineProject } from '@mrdv2/shared';
+import { useAppStore } from '../../stores/appStore';
 import {
   TRACK_HEIGHT,
   HEADER_WIDTH,
@@ -8,7 +9,6 @@ import {
 
 interface TimelineCanvasProps {
   timeline: TimelineProject;
-  currentTime: number;
   totalDuration: number;
   pixelsPerSec: number;
   snapGuideTime: number | null;
@@ -21,7 +21,6 @@ interface TimelineCanvasProps {
 
 export default function TimelineCanvas({
   timeline,
-  currentTime,
   totalDuration,
   pixelsPerSec,
   snapGuideTime,
@@ -31,6 +30,8 @@ export default function TimelineCanvas({
   scrollLeft,
   viewportWidth,
 }: TimelineCanvasProps) {
+  const currentFrame = useAppStore(s => s.currentFrame);
+  const currentTime = currentFrame / (timeline.project.fps || 30);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {

@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import type { SubtitleStyle } from '@mrdv2/shared';
-import { DEFAULT_SUBTITLE_STYLE } from '@mrdv2/shared';
+import type { SubtitleStyle, FontCategory } from '@mrdv2/shared';
+import { DEFAULT_SUBTITLE_STYLE, SUPPORTED_FONTS } from '@mrdv2/shared';
+import { ensureFontLoaded } from '../../../lib/fontLoader';
 import { useAppStore } from '../../../stores/appStore';
 import { upsertSubtitlePreset, deleteSubtitlePreset } from '../../../lib/api';
 
@@ -70,6 +71,24 @@ function StyleForm({
       {/* Typography */}
       <fieldset className="space-y-1">
         <legend className="text-[10px] text-zinc-500 font-medium uppercase tracking-wider">Typography</legend>
+        <label className="text-[10px] text-zinc-500">
+          Font Family
+          <select value={style.font_family}
+            onChange={(e) => { onChange('font_family', e.target.value); ensureFontLoaded(e.target.value); }}
+            className="mt-0.5 w-full bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 text-xs text-zinc-100 focus:outline-none focus:border-blue-500">
+            {(['sans-serif', 'serif', 'monospace', 'display', 'cjk'] as FontCategory[]).map((cat) => {
+              const fonts = SUPPORTED_FONTS.filter((f) => f.category === cat);
+              if (!fonts.length) return null;
+              return (
+                <optgroup key={cat} label={cat.toUpperCase()}>
+                  {fonts.map((f) => (
+                    <option key={f.id} value={f.id}>{f.displayName}</option>
+                  ))}
+                </optgroup>
+              );
+            })}
+          </select>
+        </label>
         <label className="text-[10px] text-zinc-500">
           Font Size
           <input type="number" value={style.font_size} min={8} max={200}

@@ -2,6 +2,7 @@ import React from 'react';
 import { Composition } from 'remotion';
 import { TimelineComposition } from './TimelineComposition';
 import type { TimelineProject } from '@mrdv2/shared';
+import { ensureAllGoogleFontsLoaded } from '../lib/fontLoader';
 
 // Placeholder defaults for the Composition component.
 // Actual values come from timeline.project via calculateMetadata at render time.
@@ -31,6 +32,7 @@ export const RemotionRoot: React.FC = () => {
         } as TimelineProject,
       }}
       calculateMetadata={async ({ props }) => {
+        await ensureAllGoogleFontsLoaded();
         const tl = props.timeline;
         if (!tl?.tracks?.length) return {};
 

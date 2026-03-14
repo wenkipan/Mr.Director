@@ -1,3 +1,5 @@
+export * from './fonts';
+
 export interface ProjectMeta {
   name: string;
   width: number;

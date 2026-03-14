@@ -1,20 +1,21 @@
 import { useMemo, useCallback, useState, useRef, useEffect } from 'react';
 import type { TimelineProject } from '@mrdv2/shared';
+import { useAppStore } from '../../stores/appStore';
 import { findClipById, splitClipInTimeline, generateClipId, addClipToTimeline, wouldOverlap, mergeClipsInTimeline, findGapAtTime, removeGapOnTrack, removeGapAllTracks } from './timelineUtils';
 
 interface TimelineToolbarProps {
   timeline: TimelineProject;
   selectedClipIds: Set<string>;
-  currentTime: number; // seconds
   onTimelineChange: (newTimeline: TimelineProject) => void;
 }
 
 export default function TimelineToolbar({
   timeline,
   selectedClipIds,
-  currentTime,
   onTimelineChange,
 }: TimelineToolbarProps) {
+  const currentFrame = useAppStore(s => s.currentFrame);
+  const currentTime = currentFrame / (timeline.project.fps || 30);
   // ── Split ──
   const canSplit = useMemo(() => {
     if (selectedClipIds.size !== 1) return false;

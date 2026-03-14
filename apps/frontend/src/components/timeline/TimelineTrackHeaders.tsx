@@ -1,4 +1,4 @@
-import { useCallback, useState, useRef, useEffect } from 'react';
+import { useCallback, useState, useRef, useEffect, memo } from 'react';
 import type { TimelineProject } from '@mrdv2/shared';
 import TrackHeader from './TrackHeader';
 import AddTrackButton from './AddTrackButton';
@@ -29,7 +29,7 @@ interface DragState {
   currentY: number;
 }
 
-export default function TimelineTrackHeaders({
+export default memo(function TimelineTrackHeaders({
   timeline,
   onTimelineChange,
   scrollLeft,
@@ -233,4 +233,4 @@ export default function TimelineTrackHeaders({
       </div>
     </div>
   );
-}
+});

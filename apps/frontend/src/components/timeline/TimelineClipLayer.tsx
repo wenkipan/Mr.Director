@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import type { TimelineProject } from '@mrdv2/shared';
 import TimelineClip, { type DragType } from './TimelineClip';
 import {
@@ -32,7 +33,7 @@ interface TimelineClipLayerProps {
   onBackgroundPointerDown: (e: React.PointerEvent) => void;
 }
 
-export default function TimelineClipLayer({
+export default memo(function TimelineClipLayer({
   timeline,
   pixelsPerSec,
   selectedClipIds,
@@ -98,4 +99,4 @@ export default function TimelineClipLayer({
       )}
     </div>
   );
-}
+});

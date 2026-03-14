@@ -1,6 +1,6 @@
 import { AbsoluteFill, Sequence, Video, OffthreadVideo, Audio, Img, useVideoConfig, useCurrentFrame } from 'remotion';
 import type { TimelineProject, Clip as ClipType, VideoStyle, SubtitleStyle } from '@mrdv2/shared';
-import { resolveSubtitleStyle, DEFAULT_SUBTITLE_STYLE } from '@mrdv2/shared';
+import { resolveSubtitleStyle, DEFAULT_SUBTITLE_STYLE, resolveCssFontFamily } from '@mrdv2/shared';
 import { resolveMediaUrl, getMediaType } from '../lib/timelineAdapter';
 import { parseSrt, type SrtEntry } from '../lib/srtParser';
 import { useEffect, useState } from 'react';
@@ -16,7 +16,7 @@ function subtitleStyleToCss(s: Required<SubtitleStyle>): React.CSSProperties {
     left: `${(s.position_x * 100).toFixed(1)}%`,
     top: `${(s.position_y * 100).toFixed(1)}%`,
     transform: 'translate(-50%, -50%)',
-    fontFamily: s.font_family,
+    fontFamily: resolveCssFontFamily(s.font_family),
     fontSize: s.font_size,
     color: s.color,
     backgroundColor: bg,

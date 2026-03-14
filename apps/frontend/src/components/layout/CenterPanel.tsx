@@ -12,8 +12,13 @@ import TimelineToolbar from '../timeline/TimelineToolbar';
 import Toolbar from './Toolbar';
 
 export default function CenterPanel() {
-  const { timeline, selectedMedia, currentFrame, setCurrentFrame, setPlaying, updateTimeline, undo, redo } =
-    useAppStore();
+  const timeline = useAppStore(s => s.timeline);
+  const selectedMedia = useAppStore(s => s.selectedMedia);
+  const setCurrentFrame = useAppStore(s => s.setCurrentFrame);
+  const setPlaying = useAppStore(s => s.setPlaying);
+  const updateTimeline = useAppStore(s => s.updateTimeline);
+  const undo = useAppStore(s => s.undo);
+  const redo = useAppStore(s => s.redo);
   const playerRef = useRef<PlayerRef>(null);
   const { selectedClipIds, selectClip, setSelection, clearSelection } = useSelectionStore();
 
@@ -128,7 +133,6 @@ export default function CenterPanel() {
         <TimelineToolbar
           timeline={timeline}
           selectedClipIds={selectedClipIds}
-          currentTime={currentFrame / fps}
           onTimelineChange={handleTimelineChange}
         />
 
@@ -136,7 +140,6 @@ export default function CenterPanel() {
         <div className="h-[250px] border-t border-zinc-800 bg-zinc-900">
           <TimelineEditor
             timeline={timeline}
-            currentTime={currentFrame / fps}
             onSeek={handleTimelineSeek}
             onTimelineChange={handleTimelineChange}
             selectedClipIds={selectedClipIds}

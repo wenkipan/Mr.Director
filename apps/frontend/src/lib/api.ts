@@ -116,6 +116,13 @@ export async function exportInterchange(
   }
 }
 
+export async function exportAss(projectId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/export/ass/${projectId}`);
+  if (!res.ok) throw new Error(`Failed to export ASS: ${res.statusText}`);
+  const blob = await res.blob();
+  _triggerDownload(blob, `${projectId}.ass`);
+}
+
 export interface GpuStatus {
   gpu_available: boolean;
   gl_flag: string;

@@ -7,9 +7,13 @@ import ClipPropertiesEditor from './components/layout/ClipPropertiesEditor';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useAppStore } from './stores/appStore';
 import { createProject, getProject } from './lib/api';
+import { ensureAllGoogleFontsLoaded } from './lib/fontLoader';
 
 export default function App() {
   const { projectId, setProjectId, setTimeline, loadSubtitlePresets } = useAppStore();
+
+  // Pre-load Google Fonts for subtitle rendering
+  useEffect(() => { ensureAllGoogleFontsLoaded(); }, []);
 
   // Initialize project on first load, or reload existing project
   useEffect(() => {

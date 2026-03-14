@@ -18,6 +18,7 @@ from app.services.ffmpeg_export import run_ffmpeg_export
 from app.services.otio_export import export_otio_file
 from app.services.fcpxml_export import export_fcpxml_file
 from app.services.srt_export import generate_srt_string
+from app.services.ass_export import generate_ass
 
 router = APIRouter()
 
@@ -138,6 +139,24 @@ async def start_export(req: ExportRequest):
         asyncio.create_task(run_remotion_export(export_id, req.project_id, timeline, output_path))
 
     return {"export_id": export_id, "status": job.status}
+
+
+@router.get("/ass/{project_id}")
+async def download_ass(project_id: str):
+    """Export and download ASS subtitle file for a project."""
+    timeline = _load_timeline(project_id)
+    exports_dir = _exports_dir()
+    output_path = str(exports_dir / f"{project_id}_subtitles.ass")
+
+    result = generate_ass(timeline, output_path)
+    if result is None:
+        raise HTTPException(status_code=404, detail="No subtitles found in timeline")
+
+    return FileResponse(
+        path=output_path,
+        filename=f"{project_id}.ass",
+        media_type="text/plain; charset=utf-8",
+    )
 
 
 @router.get("/{export_id}/status")

@@ -6,6 +6,7 @@ import TimelineTrackHeaders from './TimelineTrackHeaders';
 import { useTimelineDrag } from './useTimelineDrag';
 import { useMarqueeSelect } from './useMarqueeSelect';
 import { useClipboardStore } from '../../stores/clipboardStore';
+import { useAppStore } from '../../stores/appStore';
 import {
   HEADER_WIDTH,
   RULER_HEIGHT,
@@ -33,7 +34,6 @@ import {
 
 interface TimelineEditorProps {
   timeline: TimelineProject;
-  currentTime: number; // seconds
   onSeek: (timeSec: number) => void;
   onTimelineChange: (newTimeline: TimelineProject) => void;
   selectedClipIds: Set<string>;
@@ -44,7 +44,6 @@ interface TimelineEditorProps {
 
 export default function TimelineEditor({
   timeline,
-  currentTime,
   onSeek,
   onTimelineChange,
   selectedClipIds,
@@ -66,6 +65,31 @@ export default function TimelineEditor({
   const [pixelsPerSec, setPixelsPerSec] = useState(DEFAULT_PIXELS_PER_SEC);
   const totalDuration = useMemo(() => calcTotalDuration(timeline), [timeline]);
 
+  // currentTime ref — synced from store without causing re-renders
+  const currentTimeRef = useRef(0);
+  const fps = timeline.project.fps || 30;
+  useEffect(() => {
+    currentTimeRef.current = useAppStore.getState().currentFrame / fps;
+    const unsub = useAppStore.subscribe((state) => {
+      const ct = state.currentFrame / fps;
+      currentTimeRef.current = ct;
+
+      // Auto-scroll to keep playhead visible
+      const scrollEl = scrollRef.current;
+      if (!scrollEl) return;
+      const pps = pixelsPerSecRef.current;
+      const playheadX = HEADER_WIDTH + ct * pps;
+      const { scrollLeft: sl, clientWidth } = scrollEl;
+      const margin = clientWidth * 0.15;
+      if (playheadX > sl + clientWidth - margin) {
+        scrollEl.scrollLeft = playheadX - clientWidth * 0.3;
+      } else if (playheadX < sl + HEADER_WIDTH) {
+        scrollEl.scrollLeft = Math.max(0, playheadX - HEADER_WIDTH - margin);
+      }
+    });
+    return unsub;
+  }, [fps]);
+
   // Selection (lifted to parent)
   const selectClip = onSelectClip;
   const clearSelection = onClearSelection;
@@ -74,7 +98,6 @@ export default function TimelineEditor({
   const { dragVisualState, startDrag } = useTimelineDrag(
     timeline,
     pixelsPerSec,
-    currentTime,
     onTimelineChange,
     setSnapGuideTime,
     onSeek,
@@ -170,19 +193,6 @@ export default function TimelineEditor({
     return () => scrollEl.removeEventListener('scroll', onScroll);
   }, []);
 
-  // Auto-scroll to keep playhead visible
-  useEffect(() => {
-    const scrollEl = scrollRef.current;
-    if (!scrollEl) return;
-    const playheadX = HEADER_WIDTH + currentTime * pixelsPerSec;
-    const { scrollLeft, clientWidth } = scrollEl;
-    const margin = clientWidth * 0.15;
-    if (playheadX > scrollLeft + clientWidth - margin) {
-      scrollEl.scrollLeft = playheadX - clientWidth * 0.3;
-    } else if (playheadX < scrollLeft + HEADER_WIDTH) {
-      scrollEl.scrollLeft = Math.max(0, playheadX - HEADER_WIDTH - margin);
-    }
-  }, [currentTime, pixelsPerSec]);
 
   // Click/drag on empty area → marquee select (or click-to-seek if no drag)
   const handleBackgroundPointerDown = useCallback(
@@ -343,12 +353,12 @@ export default function TimelineEditor({
       // Shift+Delete: remove gap at playhead
       if (e.key === 'Delete' && e.shiftKey && !isModKey) {
         e.preventDefault();
-        const gaps = findGapAtTime(timeline, currentTime);
+        const gaps = findGapAtTime(timeline, currentTimeRef.current);
         if (gaps.length === 1) {
           const { trackId, gapStart, gapDuration } = gaps[0];
           onTimelineChange(removeGapOnTrack(timeline, trackId, gapStart, gapDuration));
         } else if (gaps.length > 1) {
-          onTimelineChange(removeGapAllTracks(timeline, currentTime, gaps));
+          onTimelineChange(removeGapAllTracks(timeline, currentTimeRef.current, gaps));
         }
         return;
       }
@@ -378,7 +388,7 @@ export default function TimelineEditor({
       if (e.key === 's' && !isModKey && selectedClipIds.size === 1) {
         e.preventDefault();
         const clipId = [...selectedClipIds][0];
-        const result = splitClipInTimeline(timeline, clipId, currentTime);
+        const result = splitClipInTimeline(timeline, clipId, currentTimeRef.current);
         if (result) {
           onTimelineChange(result);
           clearSelection();
@@ -415,10 +425,11 @@ export default function TimelineEditor({
 
           let updatedTimeline = timeline;
           const newSelectedIds = new Set<string>();
+          const ct = currentTimeRef.current;
 
           for (const item of copiedClips) {
             const timeOffset = item.clip.timeline_start_sec - earliestStart;
-            const newStart = Math.max(0, currentTime + timeOffset);
+            const newStart = Math.max(0, ct + timeOffset);
             const duration = item.clip.timeline_end_sec - item.clip.timeline_start_sec;
 
             const newClip = {
@@ -462,7 +473,7 @@ export default function TimelineEditor({
 
     el.addEventListener('keydown', handleKeyDown);
     return () => el.removeEventListener('keydown', handleKeyDown);
-  }, [selectedClipIds, timeline, currentTime, onTimelineChange, clearSelection]);
+  }, [selectedClipIds, timeline, onTimelineChange, clearSelection]);
 
   return (
     <div
@@ -481,7 +492,6 @@ export default function TimelineEditor({
       >
         <TimelineCanvas
           timeline={timeline}
-          currentTime={currentTime}
           totalDuration={totalDuration}
           pixelsPerSec={pixelsPerSec}
           snapGuideTime={snapGuideTime}

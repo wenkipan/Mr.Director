@@ -12,6 +12,7 @@
     "@mrdv2/shared": "workspace:*",
     "@remotion/bundler": "^4.0.429",
     "@remotion/cli": "^4.0.429",
+    "@remotion/google-fonts": "^4.0.435",
     "@remotion/media-utils": "^4.0.429",
     "@remotion/player": "^4.0.429",
     "@xzdarcy/react-timeline-editor": "^1.0.0",

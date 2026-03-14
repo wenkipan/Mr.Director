@@ -113,10 +113,10 @@ def _scale_filter(vs: VideoStyle, frame_w: int, frame_h: int) -> str:
         )
     elif vs.fit == "fill":
         return f",scale={bw}:{bh},setsar=1"
-    # contain (default): letterbox with black bars
+    # contain (default): letterbox with transparent padding
     return (
         f",scale={bw}:{bh}:force_original_aspect_ratio=decrease"
-        f",pad={bw}:{bh}:-1:-1:color=black,setsar=1"
+        f",format=rgba,pad={bw}:{bh}:-1:-1:color=0x00000000,setsar=1"
     )
 
 
@@ -189,10 +189,12 @@ def _build_filter_complex(
             vs = clip.video_style or VideoStyle()
 
             # Input flags
+            source_in = clip.source_in_sec or 0.0
             if asset_type == "image":
                 input_args += ["-loop", "1", "-i", media_path]
             else:
-                input_args += ["-i", media_path]
+                # Fast-seek to nearest keyframe before source_in
+                input_args += ["-ss", f"{source_in:.6f}", "-i", media_path]
 
             video_clip_inputs.append((clip, input_idx, media_path))
 
@@ -206,21 +208,22 @@ def _build_filter_complex(
                     f",setpts=PTS-STARTPTS+{ts:.6f}/TB"
                 )
             else:
-                source_in = clip.source_in_sec or 0.0
                 speed = clip.speed if clip.speed else 1.0
                 if clip.source_out_sec is not None:
                     source_out = clip.source_out_sec
                 else:
                     clip_dur = clip.timeline_end_sec - clip.timeline_start_sec
                     source_out = source_in + clip_dur * speed
+                # After -ss, timestamps are rebased to ~0; trim by duration
+                trim_dur = source_out - source_in
                 if speed != 1.0:
                     chain += (
-                        f"trim=start={source_in:.6f}:end={source_out:.6f}"
+                        f"trim=duration={trim_dur:.6f}"
                         f",setpts=(PTS-STARTPTS)/{speed:.6f}+{ts:.6f}/TB"
                     )
                 else:
                     chain += (
-                        f"trim=start={source_in:.6f}:end={source_out:.6f}"
+                        f"trim=duration={trim_dur:.6f}"
                         f",setpts=PTS-STARTPTS+{ts:.6f}/TB"
                     )
 
@@ -239,7 +242,8 @@ def _build_filter_complex(
             y = int((vs.position_y - vs.height / 2) * H)
             next_label = f"v{input_idx}"
 
-            overlay_fmt = ":format=auto" if vs.opacity < 1.0 else ""
+            needs_alpha = vs.opacity < 1.0 or vs.fit == "contain"
+            overlay_fmt = ":format=auto" if needs_alpha else ""
             filter_lines.append(
                 f"[{current_label}][{clip_label}]"
                 f"overlay=x={x}:y={y}"
@@ -255,7 +259,10 @@ def _build_filter_complex(
     # ── Subtitle burn-in ─────────────────────────────────────
     if subtitle_path and subtitle_format == "ass":
         safe = _escape_filter_path(subtitle_path)
-        filter_lines.append(f"[vfps]ass={safe}[vout]")
+        from app.services.font_registry import get_fonts_dir
+        fonts_dir = get_fonts_dir()
+        safe_fonts = _escape_filter_path(fonts_dir)
+        filter_lines.append(f"[vfps]ass={safe}:fontsdir={safe_fonts}[vout]")
     elif subtitle_path and subtitle_format == "srt":
         safe = _escape_filter_path(subtitle_path)
         filter_lines.append(f"[vfps]subtitles={safe}[vout]")
@@ -284,7 +291,8 @@ def _build_filter_complex(
             media_path = _resolve_media_path(clip, timeline)
             if not media_path:
                 continue
-            input_args += ["-i", media_path]
+            a_source_in = clip.source_in_sec or 0.0
+            input_args += ["-ss", f"{a_source_in:.6f}", "-i", media_path]
             audio_sources.append((clip, input_idx, int(clip.timeline_start_sec * 1000)))
             input_idx += 1
 
@@ -299,9 +307,11 @@ def _build_filter_complex(
             else:
                 clip_dur = clip.timeline_end_sec - clip.timeline_start_sec
                 source_out = source_in + clip_dur * speed
+            # After -ss, timestamps are rebased to ~0; trim by duration
+            a_trim_dur = source_out - source_in
             chain = (
                 f"[{idx}:a]"
-                f"atrim=start={source_in:.6f}:end={source_out:.6f},"
+                f"atrim=duration={a_trim_dur:.6f},"
                 f"asetpts=PTS-STARTPTS"
             )
             if clip.speed and clip.speed != 1.0:
