@@ -1,11 +1,15 @@
 """ASS subtitle generation from TimelineProject."""
 
+from __future__ import annotations
+
 import hashlib
 import logging
 import math
 import re
 from dataclasses import dataclass
 from pathlib import Path
+
+from PIL import ImageFont
 
 from app.models.timeline import TimelineProject, SubtitleStyle
 from app.services.subtitle_styles import resolve_clip_style, ensure_default_preset
@@ -126,6 +130,7 @@ def _escape_ass_text(text: str) -> str:
     )
 
 
+from app.services.font_registry import resolve_font_path as _resolve_font_path
 from app.services.font_registry import resolve_fontconfig_name as _resolve_font_family
 
 
@@ -168,17 +173,91 @@ def _parse_css_padding_components(padding_str: str | None) -> tuple[float, float
     return (0.0, 0.0)
 
 
+def _load_pil_font(font_family: str, font_size: float, bold: bool) -> ImageFont.FreeTypeFont | None:
+    """Load a PIL ImageFont for the given family and size. Returns None on failure."""
+    path = _resolve_font_path(font_family, bold=bold)
+    if not path:
+        return None
+    try:
+        return ImageFont.truetype(path, size=int(round(font_size)))
+    except Exception:
+        logger.debug("Failed to load font %s at size %s", path, font_size)
+        return None
+
+
+# Module-level cache: (font_path, font_size) → ImageFont instance
+_pil_font_cache: dict[tuple[str, int], ImageFont.FreeTypeFont] = {}
+
+
+def _get_pil_font(font_family: str, font_size: float, bold: bool) -> ImageFont.FreeTypeFont | None:
+    """Get a cached PIL ImageFont instance."""
+    path = _resolve_font_path(font_family, bold=bold)
+    if not path:
+        return None
+    key = (path, int(round(font_size)))
+    cached = _pil_font_cache.get(key)
+    if cached is not None:
+        return cached
+    font = _load_pil_font(font_family, font_size, bold)
+    if font is not None:
+        _pil_font_cache[key] = font
+    return font
+
+
 def _estimate_text_block_size(
     text: str, font_size: float, pad_v: float, pad_h: float, max_width: float,
+    pil_font: ImageFont.FreeTypeFont | None = None,
 ) -> tuple[float, float]:
     """Estimate rendered bounding box *(width, height)* for a text block.
 
-    Uses rough per-character width heuristics: CJK ≈ 1 em, Latin ≈ 0.55 em.
-    Accounts for line wrapping when a single line exceeds *max_width*.
+    When *pil_font* is provided, uses FreeType metrics for precise measurement.
+    Falls back to character-width heuristics when no font is available.
     """
     lines = text.split("\n")
-    line_height = font_size * 1.2
     max_content_w = max_width - 2 * pad_h
+
+    if pil_font is not None:
+        return _measure_with_pil(lines, pil_font, pad_v, pad_h, max_content_w)
+    return _measure_heuristic(lines, font_size, pad_v, pad_h, max_content_w)
+
+
+def _measure_with_pil(
+    lines: list[str],
+    font: ImageFont.FreeTypeFont,
+    pad_v: float,
+    pad_h: float,
+    max_content_w: float,
+) -> tuple[float, float]:
+    """Measure text block using Pillow FreeType metrics."""
+    # Line height from font ascent + descent
+    ascent, descent = font.getmetrics()
+    line_height = ascent + descent
+
+    max_line_w = 0.0
+    total_lines = 0
+    for line in lines:
+        w = font.getlength(line)
+        if max_content_w > 0 and w > max_content_w:
+            total_lines += math.ceil(w / max_content_w)
+            max_line_w = max(max_line_w, max_content_w)
+        else:
+            total_lines += 1
+            max_line_w = max(max_line_w, w)
+
+    width = max_line_w + 2 * pad_h
+    height = total_lines * line_height + 2 * pad_v
+    return (width, height)
+
+
+def _measure_heuristic(
+    lines: list[str],
+    font_size: float,
+    pad_v: float,
+    pad_h: float,
+    max_content_w: float,
+) -> tuple[float, float]:
+    """Fallback: estimate text block using character-width heuristics."""
+    line_height = font_size * 1.2
 
     max_line_w = 0.0
     total_lines = 0
@@ -328,7 +407,11 @@ def _build_style_line(name: str, s: SubtitleStyle, play_res_x: int, *, mode: str
     """
     # ── Common ────────────────────────────────────────────────
     font = _resolve_font_family(s.font_family or "sans-serif")
-    ass_font_size = s.font_size or 48
+    # ASS Fontsize spans the full ascender-to-descender bounding box, while
+    # CSS font-size represents the Em-square.  A ×4/3 factor matches the
+    # visual size produced by libass against a browser rendering.
+    base_font_size = s.font_size or 48
+    ass_font_size = int(round(base_font_size * 1.3333))
     global_opacity = s.opacity if s.opacity is not None else 1.0
     alignment = 5
     margin_h = int(play_res_x * 0.10)
@@ -432,6 +515,7 @@ def _build_dialogues(
     pos_x: int,
     pos_y: int,
     play_res_x: int,
+    pil_font: ImageFont.FreeTypeFont | None = None,
 ) -> list[str]:
     """Build ASS dialogue entries for one subtitle event.
 
@@ -453,10 +537,11 @@ def _build_dialogues(
     global_opacity = style.opacity if style.opacity is not None else 1.0
 
     # ── Background drawing (layer 0) ─────────────────────────
-    font_size = style.font_size or 48
+    # Use the ×4/3 scaled size to match the ASS text layer rendering size.
+    font_size = int(round((style.font_size or 48) * 1.3333))
     pad_v, pad_h = _parse_css_padding_components(style.padding)
     max_w = play_res_x * 0.8
-    box_w, box_h = _estimate_text_block_size(text, font_size, pad_v, pad_h, max_w)
+    box_w, box_h = _estimate_text_block_size(text, font_size, pad_v, pad_h, max_w, pil_font)
     border_r = style.border_radius or 0
     drawing = _draw_rounded_rect(box_w, box_h, border_r)
 
@@ -511,6 +596,7 @@ def generate_ass(
     ensure_default_preset()
 
     styles: dict[str, tuple[SubtitleStyle, bool]] = {}  # hash -> (style, has_bg)
+    pil_fonts: dict[str, ImageFont.FreeTypeFont | None] = {}  # hash -> cached font
     dialogues: list[str] = []
 
     for track in timeline.tracks:
@@ -524,16 +610,26 @@ def generate_ass(
             has_bg = bool(bg and bg != "transparent")
             if sh not in styles:
                 styles[sh] = (style, has_bg)
+            # Load PIL font once per unique style (for precise bg measurement).
+            # Use the same ×4/3 scaled size so box dimensions match the ASS
+            # font size used in the text style layer.
+            if sh not in pil_fonts:
+                pil_fonts[sh] = _get_pil_font(
+                    style.font_family or "sans-serif",
+                    int(round((style.font_size or 48) * 1.3333)),
+                    style.bold or False,
+                )
 
             pos_x = int((style.position_x if style.position_x is not None else 0.5) * W)
             pos_y = int((style.position_y if style.position_y is not None else 0.85) * H)
+            pf = pil_fonts[sh]
 
             if clip.subtitle_text:
                 dialogues.extend(
                     _build_dialogues(
                         clip.subtitle_text, clip.timeline_start_sec,
                         clip.timeline_end_sec, style, sh, has_bg,
-                        pos_x, pos_y, W,
+                        pos_x, pos_y, W, pf,
                     )
                 )
             elif clip.media_id:
@@ -577,7 +673,7 @@ def generate_ass(
                         _build_dialogues(
                             _strip_srt_tags(entry.text), tl_start,
                             tl_end, style, sh, has_bg,
-                            pos_x, pos_y, W,
+                            pos_x, pos_y, W, pf,
                         )
                     )
 

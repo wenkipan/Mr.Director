@@ -6,9 +6,13 @@ ASS export (fontconfig / libass font names).
 
 from __future__ import annotations
 
+import logging
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,3 +99,71 @@ def resolve_fontconfig_name(font_family: str) -> str:
 def get_fonts_dir() -> str:
     """Return the path to the bundled Google Font TTF directory."""
     return str(Path(__file__).resolve().parent.parent.parent / "fonts")
+
+
+# ── Font file path resolution ──────────────────────────────
+
+_font_path_cache: dict[str, str | None] = {}
+
+
+def resolve_font_path(font_family: str, bold: bool = False) -> str | None:
+    """Resolve a font_family string to an actual .ttf file path.
+
+    Lookup order:
+    1. Bundled fonts directory (fuzzy match by fontconfig_name)
+    2. System fontconfig via ``fc-match``
+
+    Results are cached for the process lifetime.
+    """
+    fc_name = resolve_fontconfig_name(font_family)
+    cache_key = f"{fc_name}|{'b' if bold else 'r'}"
+    if cache_key in _font_path_cache:
+        return _font_path_cache[cache_key]
+
+    path = _match_bundled_font(fc_name, bold) or _match_system_font(fc_name, bold)
+    _font_path_cache[cache_key] = path
+    return path
+
+
+def _match_bundled_font(fc_name: str, bold: bool) -> str | None:
+    """Try to find a matching .ttf in the bundled fonts directory."""
+    fonts_dir = Path(get_fonts_dir())
+    if not fonts_dir.is_dir():
+        return None
+
+    # Normalize for comparison: "Open Sans" → "opensans", "Bebas Neue" → "bebasneue"
+    needle = fc_name.replace(" ", "").lower()
+    best: Path | None = None
+
+    for ttf in fonts_dir.glob("*.ttf"):
+        stem = ttf.stem.lower().replace("-", "").replace("_", "")
+        if not stem.startswith(needle):
+            continue
+        # Prefer bold variant when requested, regular otherwise
+        is_bold = "bold" in stem
+        if bold and is_bold:
+            return str(ttf)
+        if not bold and not is_bold:
+            return str(ttf)
+        # Keep as fallback (e.g. only bold variant available)
+        if best is None:
+            best = ttf
+
+    return str(best) if best else None
+
+
+def _match_system_font(fc_name: str, bold: bool) -> str | None:
+    """Use ``fc-match`` to resolve a system font file path."""
+    query = f"{fc_name}:weight={'bold' if bold else 'regular'}"
+    try:
+        result = subprocess.run(
+            ["fc-match", "--format=%{file}", query],
+            capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            path = result.stdout.strip()
+            if Path(path).exists():
+                return path
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        logger.debug("fc-match not available or timed out")
+    return None

@@ -65,6 +65,9 @@ export default function TimelineEditor({
   const [pixelsPerSec, setPixelsPerSec] = useState(DEFAULT_PIXELS_PER_SEC);
   const totalDuration = useMemo(() => calcTotalDuration(timeline), [timeline]);
 
+  // Track mouse-hovered track index for paste-to-hovered-track
+  const hoveredTrackIndexRef = useRef<number | null>(null);
+
   // currentTime ref — synced from store without causing re-renders
   const currentTimeRef = useRef(0);
   const fps = timeline.project.fps || 30;
@@ -94,6 +97,10 @@ export default function TimelineEditor({
   const selectClip = onSelectClip;
   const clearSelection = onClearSelection;
 
+  // Ref mirrors for drag hook (avoids re-renders)
+  const scrollTopRef = useRef(scrollTop);
+  scrollTopRef.current = scrollTop;
+
   // Drag (snap is computed internally, excluding the dragged clip)
   const { dragVisualState, startDrag } = useTimelineDrag(
     timeline,
@@ -102,6 +109,8 @@ export default function TimelineEditor({
     setSnapGuideTime,
     onSeek,
     selectedClipIds,
+    scrollRef,
+    scrollTopRef,
   );
 
   // Marquee selection
@@ -138,8 +147,6 @@ export default function TimelineEditor({
   // Wheel: Ctrl+wheel = zoom, track headers area = vertical scroll, else = horizontal scroll
   const pixelsPerSecRef = useRef(pixelsPerSec);
   pixelsPerSecRef.current = pixelsPerSec;
-  const scrollTopRef = useRef(scrollTop);
-  scrollTopRef.current = scrollTop;
 
   useEffect(() => {
     const scrollEl = scrollRef.current;
@@ -412,7 +419,7 @@ export default function TimelineEditor({
         }
       }
 
-      // Ctrl+V: Paste copied clips at playhead
+      // Ctrl+V: Paste copied clips at playhead (prefer hovered track)
       if (e.key === 'v' && isModKey && !e.shiftKey) {
         if (copiedClips.length > 0) {
           e.preventDefault();
@@ -427,41 +434,102 @@ export default function TimelineEditor({
           const newSelectedIds = new Set<string>();
           const ct = currentTimeRef.current;
 
+          // Resolve hovered track once for this paste operation
+          const hovIdx = hoveredTrackIndexRef.current;
+          const hoveredTrack = hovIdx !== null ? updatedTimeline.tracks[hovIdx] ?? null : null;
+
+          // Build a mapping from original track to target track.
+          // When pasting a single clip (or all clips from the same track),
+          // use the hovered track directly if type-compatible.
+          // When pasting multiple clips from different tracks, shift all
+          // clips relative to the hovered track offset.
+          const uniqueOriginalTrackIds = new Set(copiedClips.map(c => c.originalTrackId));
+          const singleSourceTrack = uniqueOriginalTrackIds.size === 1;
+
+          // video ↔ audio are cross-pasteable; subtitle is not
+          const canCrossType = (clipType: string, trackType: string) =>
+            (clipType === 'video' || clipType === 'audio') &&
+            (trackType === 'video' || trackType === 'audio');
+
+          // Convert clip type to match target track, stripping incompatible fields
+          const convertClipType = (clip: typeof copiedClips[0]['clip'], targetType: string) => {
+            const converted = { ...clip, type: targetType as typeof clip.type };
+            if (targetType === 'audio') {
+              delete (converted as Record<string, unknown>).video_style;
+            }
+            return converted;
+          };
+
           for (const item of copiedClips) {
             const timeOffset = item.clip.timeline_start_sec - earliestStart;
             const newStart = Math.max(0, ct + timeOffset);
             const duration = item.clip.timeline_end_sec - item.clip.timeline_start_sec;
 
-            const newClip = {
+            let newClip = {
               ...item.clip,
               id: generateClipId(),
               timeline_start_sec: newStart,
               timeline_end_sec: newStart + duration,
             };
 
-            let targetTrackId = item.originalTrackId;
-            let targetTrack = updatedTimeline.tracks.find(t => t.id === targetTrackId);
+            let targetTrackId: string | undefined;
+            let targetTrack: typeof updatedTimeline.tracks[number] | undefined;
 
-            if (!targetTrack || targetTrack.locked || targetTrack.type !== newClip.type) {
-              targetTrack = updatedTimeline.tracks.find(t => t.type === newClip.type && !t.locked);
-              if (targetTrack) {
-                targetTrackId = targetTrack.id;
+            if (hoveredTrack && !hoveredTrack.locked) {
+              const typeMatch = hoveredTrack.type === newClip.type;
+              const crossOk = !typeMatch && canCrossType(newClip.type, hoveredTrack.type);
+
+              if (singleSourceTrack) {
+                if (typeMatch || crossOk) {
+                  targetTrack = hoveredTrack;
+                  targetTrackId = hoveredTrack.id;
+                  if (crossOk) newClip = convertClipType(newClip, hoveredTrack.type);
+                }
               } else {
-                targetTrackId = generateTrackId();
-                const count = updatedTimeline.tracks.filter((t) => t.type === newClip.type).length + 1;
-                const name = `${newClip.type.charAt(0).toUpperCase() + newClip.type.slice(1)} ${count}`;
-                updatedTimeline = addTrackToTimeline(updatedTimeline, {
-                  id: targetTrackId,
-                  name,
-                  type: newClip.type,
-                  locked: false,
-                  muted: false,
-                  clips: [],
-                });
+                // Multi-source: compute track offset from earliest original track
+                const origTrackIndex = updatedTimeline.tracks.findIndex(t => t.id === item.originalTrackId);
+                const firstOrigIndex = updatedTimeline.tracks.findIndex(t => t.id === copiedClips[0].originalTrackId);
+                const trackDelta = origTrackIndex >= 0 && firstOrigIndex >= 0 ? origTrackIndex - firstOrigIndex : 0;
+                const resolvedIndex = hovIdx! + trackDelta;
+                const resolvedTrack = updatedTimeline.tracks[resolvedIndex];
+                if (resolvedTrack && !resolvedTrack.locked) {
+                  const rTypeMatch = resolvedTrack.type === newClip.type;
+                  const rCrossOk = !rTypeMatch && canCrossType(newClip.type, resolvedTrack.type);
+                  if (rTypeMatch || rCrossOk) {
+                    targetTrack = resolvedTrack;
+                    targetTrackId = resolvedTrack.id;
+                    if (rCrossOk) newClip = convertClipType(newClip, resolvedTrack.type);
+                  }
+                }
               }
             }
 
-            updatedTimeline = addClipToTimeline(updatedTimeline, targetTrackId, newClip);
+            // Fallback: original track → any compatible track → create new track
+            if (!targetTrack) {
+              targetTrack = updatedTimeline.tracks.find(t => t.id === item.originalTrackId);
+              if (targetTrack && !targetTrack.locked && targetTrack.type === newClip.type) {
+                targetTrackId = targetTrack.id;
+              } else {
+                targetTrack = updatedTimeline.tracks.find(t => t.type === newClip.type && !t.locked);
+                if (targetTrack) {
+                  targetTrackId = targetTrack.id;
+                } else {
+                  targetTrackId = generateTrackId();
+                  const count = updatedTimeline.tracks.filter((t) => t.type === newClip.type).length + 1;
+                  const name = `${newClip.type.charAt(0).toUpperCase() + newClip.type.slice(1)} ${count}`;
+                  updatedTimeline = addTrackToTimeline(updatedTimeline, {
+                    id: targetTrackId,
+                    name,
+                    type: newClip.type,
+                    locked: false,
+                    muted: false,
+                    clips: [],
+                  });
+                }
+              }
+            }
+
+            updatedTimeline = addClipToTimeline(updatedTimeline, targetTrackId!, newClip);
             newSelectedIds.add(newClip.id);
           }
 
@@ -485,6 +553,15 @@ export default function TimelineEditor({
         ref={scrollRef}
         className="w-full h-full overflow-x-auto overflow-y-hidden relative"
         style={{ cursor: 'default' }}
+        onMouseMove={(e) => {
+          const scrollEl = scrollRef.current;
+          if (!scrollEl) return;
+          const rect = scrollEl.getBoundingClientRect();
+          const y = e.clientY - rect.top - RULER_HEIGHT + scrollTop;
+          const idx = Math.floor(y / TRACK_HEIGHT);
+          hoveredTrackIndexRef.current = (idx >= 0 && idx < timeline.tracks.length) ? idx : null;
+        }}
+        onMouseLeave={() => { hoveredTrackIndexRef.current = null; }}
         onDragOver={handleDragOver}
         onDragEnter={handleDragEnter}
         onDragLeave={handleDragLeave}
@@ -495,6 +572,7 @@ export default function TimelineEditor({
           totalDuration={totalDuration}
           pixelsPerSec={pixelsPerSec}
           snapGuideTime={snapGuideTime}
+          insertIndicator={dragVisualState?.insertIndicator ?? null}
           canvasWidth={canvasWidth}
           height={containerHeight}
           scrollTop={scrollTop}

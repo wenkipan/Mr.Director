@@ -6,12 +6,14 @@ import {
   HEADER_WIDTH,
   RULER_HEIGHT,
 } from './timelineConstants';
+import type { InsertIndicator } from './useTimelineDrag';
 
 interface TimelineCanvasProps {
   timeline: TimelineProject;
   totalDuration: number;
   pixelsPerSec: number;
   snapGuideTime: number | null;
+  insertIndicator: InsertIndicator | null;
   canvasWidth: number;
   height: number;
   scrollTop: number;
@@ -24,6 +26,7 @@ export default function TimelineCanvas({
   totalDuration,
   pixelsPerSec,
   snapGuideTime,
+  insertIndicator,
   canvasWidth,
   height,
   scrollTop,
@@ -127,6 +130,34 @@ export default function TimelineCanvas({
       ctx.setLineDash([]);
     }
 
+    // Insert indicator (Alt+drag ripple insert)
+    if (insertIndicator) {
+      const ix = HEADER_WIDTH + insertIndicator.timeSec * pixelsPerSec;
+      const iy = RULER_HEIGHT + insertIndicator.trackIndex * TRACK_HEIGHT - scrollTop;
+      ctx.strokeStyle = '#3b82f6';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.moveTo(ix, iy);
+      ctx.lineTo(ix, iy + TRACK_HEIGHT);
+      ctx.stroke();
+      // Top triangle
+      ctx.fillStyle = '#3b82f6';
+      ctx.beginPath();
+      ctx.moveTo(ix - 5, iy);
+      ctx.lineTo(ix + 5, iy);
+      ctx.lineTo(ix, iy + 6);
+      ctx.closePath();
+      ctx.fill();
+      // Bottom triangle
+      ctx.beginPath();
+      ctx.moveTo(ix - 5, iy + TRACK_HEIGHT);
+      ctx.lineTo(ix + 5, iy + TRACK_HEIGHT);
+      ctx.lineTo(ix, iy + TRACK_HEIGHT - 6);
+      ctx.closePath();
+      ctx.fill();
+    }
+
     // Playhead line in track area
     const playheadX = HEADER_WIDTH + currentTime * pixelsPerSec;
     if (playheadX >= HEADER_WIDTH) {
@@ -158,7 +189,7 @@ export default function TimelineCanvas({
       ctx.lineTo(playheadX, RULER_HEIGHT);
       ctx.stroke();
     }
-  }, [timeline, currentTime, totalDuration, pixelsPerSec, snapGuideTime, canvasWidth, height, scrollTop, scrollLeft, viewportWidth]);
+  }, [timeline, currentTime, totalDuration, pixelsPerSec, snapGuideTime, insertIndicator, canvasWidth, height, scrollTop, scrollLeft, viewportWidth]);
 
   return (
     <canvas

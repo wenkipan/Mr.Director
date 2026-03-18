@@ -489,6 +489,112 @@ export function updateClipsInTimeline(
   };
 }
 
+/** Find the insertion point on a track closest to the given time.
+ *  Returns the time where the dragged clip should be placed and
+ *  the ID of the clip it will be inserted before (null = append). */
+export function findInsertPoint(
+  track: Track,
+  timeSec: number,
+  excludeClipId?: string,
+): { insertTime: number; insertBeforeClipId: string | null } {
+  const sorted = track.clips
+    .filter((c) => c.id !== excludeClipId)
+    .sort((a, b) => a.timeline_start_sec - b.timeline_start_sec);
+
+  if (sorted.length === 0) {
+    return { insertTime: 0, insertBeforeClipId: null };
+  }
+
+  // Find the clip whose start edge is closest to timeSec,
+  // or detect that we're past all clips (append).
+  for (let i = 0; i < sorted.length; i++) {
+    const clip = sorted[i];
+    const midpoint =
+      (clip.timeline_start_sec + clip.timeline_end_sec) / 2;
+    if (timeSec <= midpoint) {
+      // Insert before this clip
+      return { insertTime: clip.timeline_start_sec, insertBeforeClipId: clip.id };
+    }
+  }
+
+  // Past all clips → append after last
+  const last = sorted[sorted.length - 1];
+  return { insertTime: last.timeline_end_sec, insertBeforeClipId: null };
+}
+
+/** Execute a ripple insert: remove clip from source, close source gap,
+ *  open space at insertTime on target track, place clip there. */
+export function rippleInsertClip(
+  timeline: TimelineProject,
+  clipId: string,
+  targetTrackId: string,
+  insertTime: number,
+): TimelineProject {
+  const found = findClipById(timeline, clipId);
+  if (!found) return timeline;
+
+  const { clip, trackId: sourceTrackId } = found;
+  const clipDuration = clip.timeline_end_sec - clip.timeline_start_sec;
+  const clipOrigStart = clip.timeline_start_sec;
+
+  // Step 1: Remove clip from source track + ripple close the gap
+  let newTimeline: TimelineProject = {
+    ...timeline,
+    tracks: timeline.tracks.map((track) => {
+      if (track.id !== sourceTrackId) return track;
+      return {
+        ...track,
+        clips: track.clips
+          .filter((c) => c.id !== clipId)
+          .map((c) => {
+            // Shift clips after the removed clip leftward
+            if (c.timeline_start_sec > clipOrigStart + GAP_EPSILON) {
+              return {
+                ...c,
+                timeline_start_sec: c.timeline_start_sec - clipDuration,
+                timeline_end_sec: c.timeline_end_sec - clipDuration,
+              };
+            }
+            return c;
+          }),
+      };
+    }),
+  };
+
+  // Step 2: Adjust insertTime if same track and clip was before insert point
+  let adjustedInsertTime = insertTime;
+  if (sourceTrackId === targetTrackId && clipOrigStart < insertTime - GAP_EPSILON) {
+    adjustedInsertTime = insertTime - clipDuration;
+  }
+
+  // Step 3: On target track, shift clips at/after insertTime rightward + place clip
+  const placedClip: Clip = {
+    ...clip,
+    timeline_start_sec: adjustedInsertTime,
+    timeline_end_sec: adjustedInsertTime + clipDuration,
+  };
+
+  newTimeline = {
+    ...newTimeline,
+    tracks: newTimeline.tracks.map((track) => {
+      if (track.id !== targetTrackId) return track;
+      const shifted = track.clips.map((c) => {
+        if (c.timeline_start_sec >= adjustedInsertTime - GAP_EPSILON) {
+          return {
+            ...c,
+            timeline_start_sec: c.timeline_start_sec + clipDuration,
+            timeline_end_sec: c.timeline_end_sec + clipDuration,
+          };
+        }
+        return c;
+      });
+      return { ...track, clips: [...shifted, placedClip] };
+    }),
+  };
+
+  return newTimeline;
+}
+
 /** Get all clip IDs whose bounding boxes intersect the given rectangle (in content-space pixels) */
 export function getClipIdsInRect(
   timeline: TimelineProject,

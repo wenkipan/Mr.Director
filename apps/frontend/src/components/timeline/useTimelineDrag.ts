@@ -4,6 +4,8 @@ import type { DragType } from './TimelineClip';
 import { useAppStore } from '../../stores/appStore';
 import {
   HEADER_WIDTH,
+  RULER_HEIGHT,
+  TRACK_HEIGHT,
   MIN_CLIP_DURATION_SEC,
   SNAP_THRESHOLD_PX,
 } from './timelineConstants';
@@ -16,7 +18,15 @@ import {
   updateClipInTimeline,
   collectClipEdges,
   findSnapPoint,
+  findInsertPoint,
+  rippleInsertClip,
 } from './timelineUtils';
+
+export interface InsertIndicator {
+  trackIndex: number;
+  timeSec: number;
+  targetTrackId: string;
+}
 
 export interface DragVisualState {
   clipId: string;
@@ -29,6 +39,8 @@ export interface DragVisualState {
   leftPx: number | null;
   /** When true, all clips in selectedClipIds should apply the same offsetPx */
   isMultiMove: boolean;
+  /** Insert mode indicator (Alt+drag) */
+  insertIndicator: InsertIndicator | null;
 }
 
 interface MultiClipInfo {
@@ -59,6 +71,8 @@ export function useTimelineDrag(
   onSnapGuide: (timeSec: number | null) => void,
   onSeek: (timeSec: number) => void,
   selectedClipIds: Set<string>,
+  scrollRef: React.RefObject<HTMLDivElement | null>,
+  scrollTopRef: React.RefObject<number>,
 ) {
   const [visualState, setVisualState] = useState<DragVisualState | null>(null);
   const dragRef = useRef<InternalDragState | null>(null);
@@ -164,6 +178,7 @@ export function useTimelineDrag(
         widthPx: null,
         leftPx: null,
         isMultiMove,
+        insertIndicator: null,
       };
       setVisualState(visualRef.current);
 
@@ -205,26 +220,58 @@ export function useTimelineDrag(
       newStart = Math.max(0, newStart);
       const effectiveDelta = newStart - d.originalClip.timeline_start_sec;
 
-      // Boundary check: no clip below 0
-      if (d.isMultiMove) {
-        for (const mc of d.multiClips) {
-          if (mc.originalStart + effectiveDelta < 0) return;
+      // --- Insert mode (Alt + single clip move) ---
+      let insertIndicator: InsertIndicator | null = null;
+      if (e.altKey && !d.isMultiMove) {
+        const scrollEl = scrollRef.current;
+        const tl = timelineRef.current;
+        if (scrollEl) {
+          const rect = scrollEl.getBoundingClientRect();
+          const y = e.clientY - rect.top - RULER_HEIGHT + (scrollTopRef.current ?? 0);
+          const trackIndex = Math.floor(y / TRACK_HEIGHT);
+          if (trackIndex >= 0 && trackIndex < tl.tracks.length) {
+            const targetTrack = tl.tracks[trackIndex];
+            if (!targetTrack.locked && (targetTrack.type === d.originalClip.type ||
+                (targetTrack.type === 'video' || targetTrack.type === 'audio') &&
+                (d.originalClip.type === 'video' || d.originalClip.type === 'audio'))) {
+              const x = e.clientX - rect.left + scrollEl.scrollLeft - HEADER_WIDTH;
+              const timeSec = Math.max(0, x / d.pixelsPerSec);
+              const ip = findInsertPoint(targetTrack, timeSec, d.clipId);
+              insertIndicator = {
+                trackIndex,
+                timeSec: ip.insertTime,
+                targetTrackId: targetTrack.id,
+              };
+              // Show snap guide at insert point
+              onSnapGuideRef.current(null);
+            }
+          }
         }
       }
 
-      // Overlap check — exclude all selected clips from collision
-      const excludeIds = d.isMultiMove
-        ? new Set([d.clipId, ...d.multiClips.map((mc) => mc.clipId)])
-        : undefined;
+      // In insert mode, skip overlap check (ripple will handle it)
+      if (!insertIndicator) {
+        // Boundary check: no clip below 0
+        if (d.isMultiMove) {
+          for (const mc of d.multiClips) {
+            if (mc.originalStart + effectiveDelta < 0) return;
+          }
+        }
 
-      if (wouldOverlap(d.clipId, newStart, d.originalClip.timeline_end_sec - d.originalClip.timeline_start_sec, d.trackClips, excludeIds)) {
-        return;
-      }
+        // Overlap check — exclude all selected clips from collision
+        const excludeIds = d.isMultiMove
+          ? new Set([d.clipId, ...d.multiClips.map((mc) => mc.clipId)])
+          : undefined;
 
-      if (d.isMultiMove) {
-        for (const mc of d.multiClips) {
-          if (wouldOverlap(mc.clipId, mc.originalStart + effectiveDelta, mc.duration, mc.trackClips, excludeIds)) {
-            return;
+        if (wouldOverlap(d.clipId, newStart, d.originalClip.timeline_end_sec - d.originalClip.timeline_start_sec, d.trackClips, excludeIds)) {
+          return;
+        }
+
+        if (d.isMultiMove) {
+          for (const mc of d.multiClips) {
+            if (wouldOverlap(mc.clipId, mc.originalStart + effectiveDelta, mc.duration, mc.trackClips, excludeIds)) {
+              return;
+            }
           }
         }
       }
@@ -237,6 +284,7 @@ export function useTimelineDrag(
         widthPx: null,
         leftPx: null,
         isMultiMove: d.isMultiMove,
+        insertIndicator,
       };
       setVisualState(visualRef.current);
       onSeekRef.current(newStart);
@@ -277,6 +325,7 @@ export function useTimelineDrag(
         widthPx,
         leftPx,
         isMultiMove: false,
+        insertIndicator: null,
       };
       setVisualState(visualRef.current);
       onSeekRef.current(newTimelineStart);
@@ -317,6 +366,7 @@ export function useTimelineDrag(
         widthPx,
         leftPx: null,
         isMultiMove: false,
+        insertIndicator: null,
       };
       setVisualState(visualRef.current);
       onSeekRef.current(orig.timeline_start_sec + finalDuration);
@@ -336,22 +386,33 @@ export function useTimelineDrag(
       let newTimeline = tl;
 
       if (d.dragType === 'move') {
-        const deltaSec = pxToSec(vs.offsetPx, d.pixelsPerSec);
-        const newStart = Math.max(0, orig.timeline_start_sec + deltaSec);
-        const origDuration = orig.timeline_end_sec - orig.timeline_start_sec;
-        newTimeline = updateClipInTimeline(tl, d.clipId, {
-          timeline_start_sec: newStart,
-          timeline_end_sec: newStart + origDuration,
-        });
-        // Apply same delta to secondary clips
-        if (d.isMultiMove) {
-          const effectiveDelta = newStart - orig.timeline_start_sec;
-          for (const mc of d.multiClips) {
-            const mcNewStart = Math.max(0, mc.originalStart + effectiveDelta);
-            newTimeline = updateClipInTimeline(newTimeline, mc.clipId, {
-              timeline_start_sec: mcNewStart,
-              timeline_end_sec: mcNewStart + mc.duration,
-            });
+        if (vs.insertIndicator) {
+          // Insert mode: ripple insert
+          newTimeline = rippleInsertClip(
+            tl,
+            d.clipId,
+            vs.insertIndicator.targetTrackId,
+            vs.insertIndicator.timeSec,
+          );
+        } else {
+          // Normal overwrite move
+          const deltaSec = pxToSec(vs.offsetPx, d.pixelsPerSec);
+          const newStart = Math.max(0, orig.timeline_start_sec + deltaSec);
+          const origDuration = orig.timeline_end_sec - orig.timeline_start_sec;
+          newTimeline = updateClipInTimeline(tl, d.clipId, {
+            timeline_start_sec: newStart,
+            timeline_end_sec: newStart + origDuration,
+          });
+          // Apply same delta to secondary clips
+          if (d.isMultiMove) {
+            const effectiveDelta = newStart - orig.timeline_start_sec;
+            for (const mc of d.multiClips) {
+              const mcNewStart = Math.max(0, mc.originalStart + effectiveDelta);
+              newTimeline = updateClipInTimeline(newTimeline, mc.clipId, {
+                timeline_start_sec: mcNewStart,
+                timeline_end_sec: mcNewStart + mc.duration,
+              });
+            }
           }
         }
       } else if (d.dragType === 'trim-left' && vs.leftPx !== null && vs.widthPx !== null) {

@@ -3,6 +3,7 @@ import type { Clip, SubtitleStyle } from '@mrdv2/shared';
 import { resolveSubtitleStyle } from '@mrdv2/shared';
 import { useAppStore } from '../../../stores/appStore';
 import PresetPopover from './PresetPopover';
+import ColorSwatch from './ColorSwatch';
 
 interface SubtitleClipEditorProps {
   clip: Clip;
@@ -163,12 +164,7 @@ export default function SubtitleClipEditor({ clip, onUpdate, batchMode }: Subtit
                 className={inputCls('font_size')} />
             </FieldRow>
             <FieldRow label="Color" fieldKey="color">
-              <div className="flex gap-2 items-center">
-                <input type="color" value={resolved.color}
-                  onChange={(e) => handleStyleChange('color', e.target.value)}
-                  className="w-6 h-6 bg-transparent border border-zinc-700 rounded cursor-pointer" />
-                <span className="text-[10px] text-zinc-400">{resolved.color}</span>
-              </div>
+              <ColorSwatch value={resolved.color} onChange={(c) => handleStyleChange('color', c)} />
             </FieldRow>
             <FieldRow label="Align" fieldKey="text_align">
               <select value={resolved.text_align}
@@ -244,13 +240,7 @@ export default function SubtitleClipEditor({ clip, onUpdate, batchMode }: Subtit
             <legend className="text-[10px] text-zinc-500 font-medium uppercase tracking-wider">Outline & Shadow</legend>
             <div className="grid grid-cols-2 gap-2">
               <FieldRow label="Outline Color" fieldKey="outline_color">
-                <div className="flex gap-2 items-center">
-                  <input type="color"
-                    value={resolved.outline_color === 'transparent' ? '#000000' : resolved.outline_color}
-                    onChange={(e) => handleStyleChange('outline_color', e.target.value)}
-                    className="w-6 h-6 bg-transparent border border-zinc-700 rounded cursor-pointer" />
-                  <span className="text-[10px] text-zinc-400 truncate">{resolved.outline_color}</span>
-                </div>
+                <ColorSwatch value={resolved.outline_color} onChange={(c) => handleStyleChange('outline_color', c)} allowTransparent />
               </FieldRow>
               <FieldRow label="Outline Width" fieldKey="outline_width">
                 <input type="number" value={resolved.outline_width} min={0} step={0.5}

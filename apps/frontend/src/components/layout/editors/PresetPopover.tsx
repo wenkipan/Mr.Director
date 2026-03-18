@@ -4,6 +4,7 @@ import { DEFAULT_SUBTITLE_STYLE, SUPPORTED_FONTS } from '@mrdv2/shared';
 import { ensureFontLoaded } from '../../../lib/fontLoader';
 import { useAppStore } from '../../../stores/appStore';
 import { upsertSubtitlePreset, deleteSubtitlePreset } from '../../../lib/api';
+import ColorSwatch from './ColorSwatch';
 
 interface PresetPopoverProps {
   currentPreset: string;
@@ -97,11 +98,8 @@ function StyleForm({
         </label>
         <label className="text-[10px] text-zinc-500">
           Color
-          <div className="flex gap-1.5 items-center mt-0.5">
-            <input type="color" value={style.color}
-              onChange={(e) => onChange('color', e.target.value)}
-              className="w-6 h-6 bg-transparent border border-zinc-700 rounded cursor-pointer" />
-            <span className="text-[10px] text-zinc-400">{style.color}</span>
+          <div className="mt-0.5">
+            <ColorSwatch value={style.color} onChange={(c) => onChange('color', c)} />
           </div>
         </label>
         <label className="text-[10px] text-zinc-500">
@@ -171,12 +169,8 @@ function StyleForm({
         <div className="grid grid-cols-2 gap-1.5">
           <label className="text-[10px] text-zinc-500">
             Outline Color
-            <div className="flex gap-1.5 items-center mt-0.5">
-              <input type="color"
-                value={style.outline_color === 'transparent' ? '#000000' : style.outline_color}
-                onChange={(e) => onChange('outline_color', e.target.value)}
-                className="w-6 h-6 bg-transparent border border-zinc-700 rounded cursor-pointer" />
-              <span className="text-[10px] text-zinc-400 truncate">{style.outline_color}</span>
+            <div className="mt-0.5">
+              <ColorSwatch value={style.outline_color} onChange={(c) => onChange('outline_color', c)} allowTransparent />
             </div>
           </label>
           <label className="text-[10px] text-zinc-500">
