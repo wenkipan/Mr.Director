@@ -55,6 +55,10 @@ export default memo(function TimelineClip({
   const actualLeft = dragLeft !== null ? dragLeft : left + dragOffsetPx;
   const actualWidth = dragWidth !== null ? dragWidth : width;
 
+  const clipDuration = clip.timeline_end_sec - clip.timeline_start_sec;
+  const fadeInPx = clipDuration > 0 ? Math.min(actualWidth, ((clip.fade_in_sec ?? 0) / clipDuration) * actualWidth) : 0;
+  const fadeOutPx = clipDuration > 0 ? Math.min(actualWidth, ((clip.fade_out_sec ?? 0) / clipDuration) * actualWidth) : 0;
+
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
       e.stopPropagation();
@@ -134,6 +138,28 @@ export default memo(function TimelineClip({
           width={actualWidth}
           height={height}
           color={color}
+        />
+      )}
+
+      {/* Fade-in overlay */}
+      {fadeInPx > 0 && (
+        <div
+          className="absolute top-0 left-0 h-full pointer-events-none"
+          style={{
+            width: fadeInPx,
+            background: 'linear-gradient(to right, rgba(0,0,0,0.6), transparent)',
+          }}
+        />
+      )}
+
+      {/* Fade-out overlay */}
+      {fadeOutPx > 0 && (
+        <div
+          className="absolute top-0 right-0 h-full pointer-events-none"
+          style={{
+            width: fadeOutPx,
+            background: 'linear-gradient(to left, rgba(0,0,0,0.6), transparent)',
+          }}
         />
       )}
 

@@ -40,6 +40,12 @@ export default function CenterPanel() {
     };
   }, [undo, redo]);
 
+  useEffect(() => {
+    const handleTogglePlay = () => playerRef.current?.toggle();
+    document.addEventListener('timeline:togglePlay', handleTogglePlay);
+    return () => document.removeEventListener('timeline:togglePlay', handleTogglePlay);
+  }, []);
+
   // Pause player when inline text editing starts; auto-commit if playback resumes
   useEffect(() => {
     const handleEditStart = () => {
@@ -125,7 +131,11 @@ export default function CenterPanel() {
             controls
             clickToPlay={false}
             doubleClickToFullscreen={false}
-            style={{ width: '100%', maxHeight: '100%' }}
+            style={
+              timeline.project.height > timeline.project.width
+                ? { height: '100%', maxWidth: '100%' }
+                : { width: '100%', maxHeight: '100%' }
+            }
           />
         </div>
 

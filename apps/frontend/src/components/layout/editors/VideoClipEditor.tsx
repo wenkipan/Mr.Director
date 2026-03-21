@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import type { Clip, VideoStyle } from '@mrdv2/shared';
 import SpeedControl from './SpeedControl';
 import VolumeControl from './VolumeControl';
+import FadeControl from './FadeControl';
 
 interface VideoClipEditorProps {
   clip: Clip;
@@ -69,6 +70,11 @@ export default function VideoClipEditor({ clip, onUpdate, batchMode }: VideoClip
       {/* Volume */}
       {!batchMode && (
         <VolumeControl clip={clip} onVolumeChange={(v) => onUpdate({ volume: v })} />
+      )}
+
+      {/* Fade */}
+      {!batchMode && (
+        <FadeControl clip={clip} onFadeChange={(fi, fo) => onUpdate({ fade_in_sec: fi, fade_out_sec: fo })} />
       )}
 
       {/* Position */}

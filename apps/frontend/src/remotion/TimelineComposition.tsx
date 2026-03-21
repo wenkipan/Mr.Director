@@ -3,9 +3,10 @@ import type { TimelineProject, Clip as ClipType, VideoStyle, SubtitleStyle } fro
 import { resolveSubtitleStyle, DEFAULT_SUBTITLE_STYLE, resolveCssFontFamily } from '@mrdv2/shared';
 import { resolveMediaUrl, getMediaType } from '../lib/timelineAdapter';
 import { parseSrt, type SrtEntry } from '../lib/srtParser';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { EditableText } from './EditableText';
 import { useAppStore } from '../stores/appStore';
+import { parseAssOverrides } from '../lib/assOverrides';
 
 /** Build CSS properties from a fully resolved SubtitleStyle. */
 function subtitleStyleToCss(s: Required<SubtitleStyle>): React.CSSProperties {
@@ -16,6 +17,8 @@ function subtitleStyleToCss(s: Required<SubtitleStyle>): React.CSSProperties {
     left: `${(s.position_x * 100).toFixed(1)}%`,
     top: `${(s.position_y * 100).toFixed(1)}%`,
     transform: 'translate(-50%, -50%)',
+    width: 'max-content',
+    maxWidth: '90%',
     fontFamily: resolveCssFontFamily(s.font_family),
     fontSize: s.font_size,
     color: s.color,
@@ -25,7 +28,6 @@ function subtitleStyleToCss(s: Required<SubtitleStyle>): React.CSSProperties {
     fontStyle: s.italic ? 'italic' : 'normal',
     padding: hasBg ? s.padding : undefined,
     borderRadius: hasBg ? s.border_radius : undefined,
-    maxWidth: '80%',
     whiteSpace: 'pre-wrap',
     opacity: s.opacity,
     letterSpacing: s.letter_spacing !== 0 ? s.letter_spacing : undefined,
@@ -73,12 +75,13 @@ const SrtSubtitleClip: React.FC<{
 
   const sourceTime = (clip.source_in_sec ?? 0) + (frame / fps) * (clip.speed ?? 1);
   const active = entries.find((e) => sourceTime >= e.startSec && sourceTime < e.endSec);
+  const renderedText = useMemo(() => active ? parseAssOverrides(active.text) : null, [active?.text]);
   if (!active) return null;
 
   return (
     <AbsoluteFill>
       <div style={subtitleStyleToCss(resolved)}>
-        {active.text}
+        {renderedText}
       </div>
     </AbsoluteFill>
   );
@@ -91,11 +94,12 @@ const InlineSubtitleClip: React.FC<{
 }> = ({ clip, isSSR }) => {
   const resolved = useResolvedStyle(clip);
   const textCss = subtitleStyleToCss(resolved);
+  const renderedText = useMemo(() => parseAssOverrides(clip.subtitle_text!), [clip.subtitle_text]);
 
   return (
     <AbsoluteFill>
       {isSSR ? (
-        <div style={textCss}>{clip.subtitle_text}</div>
+        <div style={textCss}>{renderedText}</div>
       ) : (
         <EditableText
           clipId={clip.id}
@@ -253,6 +257,21 @@ export const TimelineComposition: React.FC<TimelineCompositionProps> = ({ timeli
 
               if (!mediaUrl || durationFrames < 1) return null;
 
+              const base = clip.volume ?? 1;
+              const fadeInFrames = Math.round((clip.fade_in_sec ?? 0) * fps);
+              const fadeOutFrames = Math.round((clip.fade_out_sec ?? 0) * fps);
+              const volumeProp =
+                fadeInFrames === 0 && fadeOutFrames === 0
+                  ? base
+                  : (frame: number) => {
+                      let vol = base;
+                      if (fadeInFrames > 0 && frame < fadeInFrames)
+                        vol *= frame / fadeInFrames;
+                      if (fadeOutFrames > 0 && frame > durationFrames - fadeOutFrames)
+                        vol *= (durationFrames - frame) / fadeOutFrames;
+                      return Math.max(0, vol);
+                    };
+
               return (
                 <Sequence
                   key={clip.id}
@@ -263,7 +282,7 @@ export const TimelineComposition: React.FC<TimelineCompositionProps> = ({ timeli
                     src={mediaUrl}
                     startFrom={Math.round((clip.source_in_sec ?? 0) * fps)}
                     playbackRate={clip.speed ?? 1}
-                    volume={clip.volume ?? 1}
+                    volume={volumeProp}
                   />
                 </Sequence>
               );

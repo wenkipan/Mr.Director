@@ -156,3 +156,4 @@ Backend env vars (prefix `MRDV2_`, loaded from `apps/backend/.env`). See `.env.e
 - Tool registration uses `@registry.register()` decorator pattern; parameters use Gemini uppercase types (`"STRING"`, `"OBJECT"`)
 - Pydantic models for all API request/response shapes
 - Config via `pydantic_settings.BaseSettings` with `MRDV2_` env prefix
+- 在做任何修改之前，先读取相关代码并解释：1）当前行为是什么，为什么？2）Bug 的根本原因是什么？不要提出任意常量或变通方案。

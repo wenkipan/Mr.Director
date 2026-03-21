@@ -1,5 +1,6 @@
-import { useRef, useEffect, useCallback } from 'react';
+import { useRef, useEffect, useCallback, useMemo } from 'react';
 import { useInlineEditStore } from '../stores/inlineEditStore';
+import { parseAssOverrides } from '../lib/assOverrides';
 
 interface EditableTextProps {
   clipId: string;
@@ -85,6 +86,8 @@ export const EditableText: React.FC<EditableTextProps> = ({
     [isEditing],
   );
 
+  const renderedText = useMemo(() => parseAssOverrides(text), [text]);
+
   const editingStyle: React.CSSProperties = isEditing
     ? {
         outline: '2px solid rgba(59, 130, 246, 0.8)',
@@ -111,7 +114,7 @@ export const EditableText: React.FC<EditableTextProps> = ({
       onPointerDown={handlePointerDown}
       style={{ ...style, ...editingStyle }}
     >
-      {isEditing ? undefined : text}
+      {isEditing ? undefined : renderedText}
     </div>
   );
 };

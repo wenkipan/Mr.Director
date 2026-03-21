@@ -109,6 +109,18 @@
           "maximum": 2.0,
           "description": "Audio volume multiplier. 0=mute, 1=original, 2=boost"
         },
+        "fade_in_sec": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "description": "Audio fade-in duration in seconds (0 = no fade)"
+        },
+        "fade_out_sec": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "description": "Audio fade-out duration in seconds (0 = no fade)"
+        },
         "subtitle_text": {
           "type": "string",
           "description": "For subtitle clips - the text content to display"

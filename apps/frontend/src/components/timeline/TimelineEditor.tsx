@@ -357,6 +357,13 @@ export default function TimelineEditor({
     const handleKeyDown = (e: KeyboardEvent) => {
       const isModKey = e.ctrlKey || e.metaKey;
 
+      // Space: toggle play/pause
+      if (e.key === ' ' && !isModKey) {
+        e.preventDefault();
+        document.dispatchEvent(new CustomEvent('timeline:togglePlay'));
+        return;
+      }
+
       // Shift+Delete: remove gap at playhead
       if (e.key === 'Delete' && e.shiftKey && !isModKey) {
         e.preventDefault();

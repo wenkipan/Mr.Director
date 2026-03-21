@@ -18,6 +18,7 @@ dependencies = [
     "opentimelineio>=0.17.0",
     "otio-fcp-adapter>=1.0.0",
     "Pillow>=10.0.0",
+    "cairosvg>=2.7.0",
 ]
 
 [project.scripts]

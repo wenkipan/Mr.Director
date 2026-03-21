@@ -17,7 +17,7 @@ _waveform_cache: dict[str, dict] = {}
 ALLOWED_EXTENSIONS = {
     ".mp4", ".mov", ".mkv", ".webm", ".avi",
     ".mp3", ".wav", ".aac", ".flac", ".ogg",
-    ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp",
+    ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg",
     ".srt", ".vtt",
 }
 

@@ -1,11 +1,36 @@
 import { useState, useRef, useEffect } from 'react';
 
-/** Predefined colors commonly used for subtitles */
-const PRESET_COLORS = [
-  '#FFFFFF', '#000000', '#FFFF00', '#00FF00',
-  '#00FFFF', '#FF0000', '#FF00FF', '#0000FF',
-  '#FFA500', '#FFD700', '#90EE90', '#ADD8E6',
-  '#FFC0CB', '#808080', '#C0C0C0', '#800000',
+/** Convert HSL (h: 0-360, s/l: 0-100) to uppercase hex */
+function hslToHex(h: number, s: number, l: number): string {
+  const s1 = s / 100, l1 = l / 100;
+  const a = s1 * Math.min(l1, 1 - l1);
+  const f = (n: number) => {
+    const k = (n + h / 30) % 12;
+    const c = l1 - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+    return Math.round(255 * c).toString(16).padStart(2, '0');
+  };
+  return `#${f(0)}${f(8)}${f(4)}`.toUpperCase();
+}
+
+/** 12 hues at 30° intervals covering the full spectrum */
+const HUES = [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330];
+
+const GRAYSCALE = [
+  '#FFFFFF', '#EBEBEB', '#D6D6D6', '#C2C2C2', '#ADADAD', '#999999',
+  '#808080', '#666666', '#4D4D4D', '#333333', '#1A1A1A', '#000000',
+];
+
+const HUE_TIERS = [
+  { s: 70, l: 82 },  // pastel
+  { s: 85, l: 65 },  // light
+  { s: 95, l: 50 },  // vivid
+  { s: 75, l: 33 },  // dark
+];
+
+/** 5 rows × 12 cols = 60 colors */
+const PALETTE: string[][] = [
+  GRAYSCALE,
+  ...HUE_TIERS.map(({ s, l }) => HUES.map(h => hslToHex(h, s, l))),
 ];
 
 interface ColorSwatchProps {
@@ -69,16 +94,16 @@ export default function ColorSwatch({ value, onChange, allowTransparent }: Color
 
       {/* Dropdown panel */}
       {expanded && (
-        <div className="absolute z-50 top-full left-0 mt-1 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl p-2 w-[156px]">
-          {/* Swatch grid */}
-          <div className="grid grid-cols-8 gap-1 mb-2">
-            {PRESET_COLORS.map((c) => (
+        <div className="absolute z-50 top-full left-0 mt-1 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl p-2 w-[196px]">
+          {/* Swatch grid: 12 cols × 5 rows */}
+          <div className="grid grid-cols-12 gap-0.5 mb-2">
+            {PALETTE.flat().map((c) => (
               <button
                 key={c}
                 type="button"
                 onClick={() => { onChange(c); setExpanded(false); }}
-                className={`w-4 h-4 rounded-sm border cursor-pointer transition-transform hover:scale-125 ${
-                  value === c ? 'border-blue-400 ring-1 ring-blue-400' : 'border-zinc-600'
+                className={`w-3.5 h-3.5 rounded-sm border cursor-pointer transition-transform hover:scale-125 ${
+                  value === c ? 'border-blue-400 ring-1 ring-blue-400' : 'border-zinc-700/50'
                 }`}
                 style={{ background: c }}
                 title={c}

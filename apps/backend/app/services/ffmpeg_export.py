@@ -6,6 +6,8 @@ import shutil
 import tempfile
 from pathlib import Path
 
+import cairosvg
+
 from app.config import settings
 from app.models.timeline import TimelineProject, VideoStyle, Clip, MediaAsset
 from app.services.ass_export import generate_ass
@@ -147,6 +149,7 @@ def _build_filter_complex(
     subtitle_path: str | None,
     subtitle_format: str,
     audio_probe_results: dict[str, bool],
+    tmp_dir: str | None = None,
 ) -> tuple[list[str], str, bool]:
     """Build FFmpeg filter_complex script and input arguments.
 
@@ -191,6 +194,12 @@ def _build_filter_complex(
             # Input flags
             source_in = clip.source_in_sec or 0.0
             if asset_type == "image":
+                # FFmpeg has no SVG decoder — convert to PNG first
+                if media_path.lower().endswith(".svg") and tmp_dir:
+                    png_path = f"{tmp_dir}/svg_{input_idx}.png"
+                    cairosvg.svg2png(url=media_path, write_to=png_path,
+                                     output_width=W, output_height=H)
+                    media_path = png_path
                 input_args += ["-loop", "1", "-i", media_path]
             else:
                 # Fast-seek to nearest keyframe before source_in
@@ -319,6 +328,13 @@ def _build_filter_complex(
             vol = clip.volume if clip.volume is not None else 1.0
             if abs(vol - 1.0) > 1e-6:
                 chain += f",volume={vol:.4f}"
+            fade_in = clip.fade_in_sec if clip.fade_in_sec else 0.0
+            fade_out = clip.fade_out_sec if clip.fade_out_sec else 0.0
+            if fade_in > 0:
+                chain += f",afade=t=in:d={fade_in:.4f}"
+            if fade_out > 0:
+                fade_out_start = max(0.0, a_trim_dur - fade_out)
+                chain += f",afade=t=out:st={fade_out_start:.4f}:d={fade_out:.4f}"
             chain += f",adelay={delay}|{delay}[a{idx}]"
             filter_lines.append(chain)
 
@@ -392,7 +408,7 @@ async def run_ffmpeg_export(
 
         # ── Build filter_complex ─────────────────────────────
         input_args, filter_script, has_audio = _build_filter_complex(
-            timeline, subtitle_path, subtitle_format, audio_probe
+            timeline, subtitle_path, subtitle_format, audio_probe, tmp_dir
         )
 
         filter_path = f"{tmp_dir}/filter.txt"

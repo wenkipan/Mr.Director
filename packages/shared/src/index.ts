@@ -95,6 +95,9 @@ export interface Clip {
   timeline_start_sec: number;
   timeline_end_sec: number;
   speed?: number;
+  volume?: number;
+  fade_in_sec?: number;
+  fade_out_sec?: number;
   subtitle_text?: string;
   subtitle_style_ref?: string;
   subtitle_style?: SubtitleStyle;

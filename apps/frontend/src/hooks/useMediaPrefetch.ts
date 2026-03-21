@@ -26,7 +26,11 @@ export function useMediaPrefetch(timeline: TimelineProject | null) {
       if (prefetchedRef.current.has(url)) continue;
 
       const contentType =
-        asset.type === 'audio' ? 'audio/mpeg' : 'video/mp4';
+        asset.type === 'audio'
+          ? 'audio/mpeg'
+          : asset.type === 'image'
+            ? (asset.path.toLowerCase().endsWith('.svg') ? 'image/svg+xml' : 'image/png')
+            : 'video/mp4';
 
       try {
         const handle = prefetch(url, {

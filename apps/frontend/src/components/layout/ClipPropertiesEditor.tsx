@@ -6,6 +6,7 @@ import SubtitleClipEditor from './editors/SubtitleClipEditor';
 import VideoClipEditor from './editors/VideoClipEditor';
 import SpeedControl from './editors/SpeedControl';
 import VolumeControl from './editors/VolumeControl';
+import FadeControl from './editors/FadeControl';
 import type { Clip, TimelineProject } from '@mrdv2/shared';
 
 export default function ClipPropertiesEditor() {
@@ -192,6 +193,7 @@ export default function ClipPropertiesEditor() {
         {clipType === 'audio' && !isBatch && (
           <>
             <VolumeControl clip={representativeClip} onVolumeChange={(v) => handleClipUpdate({ volume: v })} />
+            <FadeControl clip={representativeClip} onFadeChange={(fi, fo) => handleClipUpdate({ fade_in_sec: fi, fade_out_sec: fo })} />
             {representativeClip.source_in_sec != null && representativeClip.source_out_sec != null && (
               <SpeedControl clip={representativeClip} onSpeedChange={(v) => handleClipUpdate({ speed: v })} />
             )}

@@ -120,14 +120,39 @@ def _strip_srt_tags(text: str) -> str:
     return re.sub(r"<[^>]+>", "", text)
 
 
+# Matches ASS override tag blocks like {\b1}, {\s1\i1}, etc.
+_ASS_OVERRIDE_RE = re.compile(r'\{\\[^}]+\}')
+
+
 def _escape_ass_text(text: str) -> str:
-    """Escape special characters for ASS dialogue text."""
-    return (
-        text.replace("\\", "\\\\")
+    """Escape special characters for ASS dialogue text.
+
+    Preserves ASS override tag blocks (e.g. {\\s1}, {\\b1\\i1}) while
+    escaping stray curly braces and backslashes in plain text segments.
+    """
+    parts: list[str] = []
+    last = 0
+    for m in _ASS_OVERRIDE_RE.finditer(text):
+        # Escape the plain-text segment before this tag block
+        plain = text[last:m.start()]
+        parts.append(
+            plain.replace("\\", "\\\\")
+            .replace("{", "\\{")
+            .replace("}", "\\}")
+            .replace("\n", "\\N")
+        )
+        # Keep the override tag block as-is
+        parts.append(m.group())
+        last = m.end()
+    # Escape the remaining plain-text tail
+    tail = text[last:]
+    parts.append(
+        tail.replace("\\", "\\\\")
         .replace("{", "\\{")
         .replace("}", "\\}")
         .replace("\n", "\\N")
     )
+    return "".join(parts)
 
 
 from app.services.font_registry import resolve_font_path as _resolve_font_path
@@ -229,13 +254,14 @@ def _measure_with_pil(
     max_content_w: float,
 ) -> tuple[float, float]:
     """Measure text block using Pillow FreeType metrics."""
-    # Line height from font ascent + descent
     ascent, descent = font.getmetrics()
     line_height = ascent + descent
 
     max_line_w = 0.0
     total_lines = 0
     for line in lines:
+        if not line:  # skip empty lines (e.g. trailing \N)
+            continue
         w = font.getlength(line)
         if max_content_w > 0 and w > max_content_w:
             total_lines += math.ceil(w / max_content_w)
@@ -243,6 +269,7 @@ def _measure_with_pil(
         else:
             total_lines += 1
             max_line_w = max(max_line_w, w)
+    total_lines = max(total_lines, 1)  # at least 1 line
 
     width = max_line_w + 2 * pad_h
     height = total_lines * line_height + 2 * pad_v
@@ -262,6 +289,8 @@ def _measure_heuristic(
     max_line_w = 0.0
     total_lines = 0
     for line in lines:
+        if not line:  # skip empty lines (e.g. trailing \N)
+            continue
         w = 0.0
         for ch in line:
             cp = ord(ch)
@@ -285,6 +314,7 @@ def _measure_heuristic(
         else:
             total_lines += 1
             max_line_w = max(max_line_w, w)
+    total_lines = max(total_lines, 1)  # at least 1 line
 
     width = max_line_w + 2 * pad_h
     height = total_lines * line_height + 2 * pad_v
@@ -525,6 +555,10 @@ def _build_dialogues(
     start = _sec_to_ass_time(start_sec)
     end = _sec_to_ass_time(end_sec)
 
+    # Strip trailing newlines — they create invisible empty lines that inflate
+    # both the \p1 background box and the ASS text rendering.
+    text = text.rstrip("\n")
+
     if not has_bg:
         alpha_tags = _build_alpha_override_tags(style)
         tags = f"{{\\pos({pos_x},{pos_y}){alpha_tags}}}"
@@ -541,7 +575,10 @@ def _build_dialogues(
     font_size = int(round((style.font_size or 48) * 1.3333))
     pad_v, pad_h = _parse_css_padding_components(style.padding)
     max_w = play_res_x * 0.8
-    box_w, box_h = _estimate_text_block_size(text, font_size, pad_v, pad_h, max_w, pil_font)
+    # Strip ASS override tags (e.g. {\s1}, {\b1\i1}) before measuring —
+    # they are invisible but inflate PIL/heuristic width calculations.
+    measure_text = _ASS_OVERRIDE_RE.sub("", text)
+    box_w, box_h = _estimate_text_block_size(measure_text, font_size, pad_v, pad_h, max_w, pil_font)
     border_r = style.border_radius or 0
     drawing = _draw_rounded_rect(box_w, box_h, border_r)
 

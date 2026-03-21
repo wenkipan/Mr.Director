@@ -292,7 +292,7 @@ def _exec_update(timeline: TimelineProject, op: dict) -> dict:
     track, clip = found
 
     # Updatable scalar fields
-    SCALAR_FIELDS = {"source_in_sec", "source_out_sec", "timeline_start_sec", "timeline_end_sec", "speed", "volume"}
+    SCALAR_FIELDS = {"source_in_sec", "source_out_sec", "timeline_start_sec", "timeline_end_sec", "speed", "volume", "fade_in_sec", "fade_out_sec"}
     for field in SCALAR_FIELDS:
         if field in op:
             setattr(clip, field, float(op[field]) if op[field] is not None else None)
