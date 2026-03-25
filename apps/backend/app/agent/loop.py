@@ -23,6 +23,7 @@ import app.tools.subtitles  # noqa: F401
 import app.tools.time_mapping  # noqa: F401
 import app.tools.export  # noqa: F401
 import app.tools.subtitle_styles  # noqa: F401
+import app.tools.tts  # noqa: F401
 
 logger = logging.getLogger(__name__)
 

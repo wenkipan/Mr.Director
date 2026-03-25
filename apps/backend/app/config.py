@@ -25,6 +25,12 @@ class Settings(BaseSettings):
     vision_base_url: str = ""
     vision_model: str = ""
 
+    # TTS
+    tts_provider: str = "edge"  # edge
+    tts_api_key: str = ""
+    tts_base_url: str = ""
+    tts_default_voice: str = ""  # empty = provider decides
+
     whisper_model_size: str = "medium"
     whisper_device: str = "auto"
     allowed_media_dirs: list[str] = []
