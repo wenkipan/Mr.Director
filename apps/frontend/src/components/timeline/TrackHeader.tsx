@@ -1,5 +1,6 @@
 import type { Track } from '@mrdv2/shared';
 import { TRACK_COLORS } from './timelineConstants';
+import { gray500 } from '../../theme';
 
 interface TrackHeaderProps {
   track: Track;
@@ -8,7 +9,7 @@ interface TrackHeaderProps {
 }
 
 export default function TrackHeader({ track, onDelete, onDragStart }: TrackHeaderProps) {
-  const color = TRACK_COLORS[track.type] || '#71717a';
+  const color = TRACK_COLORS[track.type] || gray500;
   const displayName =
     track.name || track.type.charAt(0).toUpperCase() + track.type.slice(1);
 

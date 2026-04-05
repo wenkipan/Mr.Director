@@ -7,7 +7,11 @@ import MessageProgressDisplay from '../chat/MessageProgressDisplay';
 export default function ChatPanel() {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
-  const { messages, addMessage, projectId, archiveAgentProgress, wsSend } = useAppStore();
+  const messages = useAppStore(s => s.messages);
+  const addMessage = useAppStore(s => s.addMessage);
+  const projectId = useAppStore(s => s.projectId);
+  const archiveAgentProgress = useAppStore(s => s.archiveAgentProgress);
+  const wsSend = useAppStore(s => s.wsSend);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 

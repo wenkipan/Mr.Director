@@ -2,6 +2,13 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  /* Theme tokens for non-Tailwind contexts (scrollbars, canvas, etc.)
+     Values mirror Tailwind's zinc palette.  */
+  --color-zinc-800: #3f3f46;
+  --color-zinc-600: #52525b;
+}
+
 html, body, #root {
   height: 100%;
   margin: 0;
@@ -18,9 +25,9 @@ html, body, #root {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #3f3f46;
+  background: var(--color-zinc-800);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #52525b;
+  background: var(--color-zinc-600);
 }

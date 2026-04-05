@@ -206,9 +206,9 @@ export const TimelineComposition: React.FC<TimelineCompositionProps> = ({ timeli
   const { fps } = useVideoConfig();
   const isSSR = !!(timeline as any)._ssr;
 
-  const videoTracks = timeline.tracks.filter((t) => t.type === 'video');
-  const audioTracks = timeline.tracks.filter((t) => t.type === 'audio');
-  const subtitleTracks = timeline.tracks.filter((t) => t.type === 'subtitle');
+  const videoTracks = useMemo(() => timeline.tracks.filter((t) => t.type === 'video'), [timeline.tracks]);
+  const audioTracks = useMemo(() => timeline.tracks.filter((t) => t.type === 'audio'), [timeline.tracks]);
+  const subtitleTracks = useMemo(() => timeline.tracks.filter((t) => t.type === 'subtitle'), [timeline.tracks]);
 
   return (
     <AbsoluteFill style={{ backgroundColor: '#000' }}>

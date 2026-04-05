@@ -77,6 +77,8 @@ export function useTimelineDrag(
   const [visualState, setVisualState] = useState<DragVisualState | null>(null);
   const dragRef = useRef<InternalDragState | null>(null);
   const visualRef = useRef<DragVisualState | null>(null);
+  /** Cached snap edges — built once at drag start to avoid O(n) per pointermove */
+  const snapEdgesRef = useRef<number[]>([]);
   const timelineRef = useRef(timeline);
   const currentTimeRef = useRef(0);
   const onTimelineChangeRef = useRef(onTimelineChange);
@@ -103,20 +105,14 @@ export function useTimelineDrag(
     return unsub;
   }, []);
 
-  /** Compute snap targets on the fly, excluding all moving clips */
+  /** Compute snap using cached edges (built at drag start).
+   *  Playhead is checked live since it can move during drag. */
   const computeSnap = useCallback((timeSec: number): { snappedTime: number; didSnap: boolean } => {
-    const d = dragRef.current;
-    const tl = timelineRef.current;
-    let excludeIds: string | Set<string> | undefined = d?.clipId;
-    if (d?.isMultiMove) {
-      const set = new Set([d.clipId, ...d.multiClips.map((mc) => mc.clipId)]);
-      excludeIds = set;
-    }
-    const edges = collectClipEdges(tl, excludeIds);
-    edges.push(currentTimeRef.current); // playhead
-    edges.push(0); // timeline start
+    const edges = snapEdgesRef.current;
+    // Playhead is dynamic — append without mutating the cached array
+    const dynamicEdges = [...edges, currentTimeRef.current];
     const thresholdSec = SNAP_THRESHOLD_PX / pixelsPerSecRef.current;
-    return findSnapPoint(timeSec, edges, thresholdSec);
+    return findSnapPoint(timeSec, dynamicEdges, thresholdSec);
   }, []);
 
   const startDrag = useCallback(
@@ -170,6 +166,14 @@ export function useTimelineDrag(
         isMultiMove,
         multiClips,
       };
+
+      // Pre-compute snap edges once — avoids O(n) traversal on every pointermove
+      const excludeIds = isMultiMove
+        ? new Set([clipId, ...multiClips.map((mc) => mc.clipId)])
+        : clipId;
+      const edges = collectClipEdges(tl, excludeIds);
+      edges.push(0); // timeline start is always a snap target
+      snapEdgesRef.current = edges;
 
       visualRef.current = {
         clipId,

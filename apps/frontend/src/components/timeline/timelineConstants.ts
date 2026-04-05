@@ -12,8 +12,6 @@ export const SNAP_THRESHOLD_PX = 5;
 export const MARQUEE_THRESHOLD_PX = 3;
 export const MIN_CLIP_DURATION_SEC = 0.1;
 
-export const TRACK_COLORS: Record<string, string> = {
-  video: '#3b82f6',
-  audio: '#22c55e',
-  subtitle: '#eab308',
-};
+// Track colors are defined in the central theme file.
+// Re-export here so existing imports keep working.
+export { TRACK_COLORS } from '../../theme';

@@ -6,6 +6,11 @@ import {
   HEADER_WIDTH,
   RULER_HEIGHT,
 } from './timelineConstants';
+import {
+  zinc950, zinc900, zinc800, zinc400,
+  blue500, red500, amber400,
+  trackLaneEven, trackLaneOdd,
+} from '../../theme';
 import type { InsertIndicator } from './useTimelineDrag';
 
 interface TimelineCanvasProps {
@@ -58,17 +63,17 @@ export default function TimelineCanvas({
     ctx.translate(-scrollLeft, 0);
 
     // Background
-    ctx.fillStyle = '#18181b';
+    ctx.fillStyle = zinc950;
     ctx.fillRect(scrollLeft, 0, viewportWidth, height);
 
     // Ruler background
-    ctx.fillStyle = '#27272a';
+    ctx.fillStyle = zinc900;
     ctx.fillRect(Math.max(HEADER_WIDTH, scrollLeft), 0, viewportWidth, RULER_HEIGHT);
 
     // Ruler ticks and labels — only draw visible ones
-    ctx.strokeStyle = '#3f3f46';
+    ctx.strokeStyle = zinc800;
     ctx.lineWidth = 1;
-    ctx.fillStyle = '#a1a1aa';
+    ctx.fillStyle = zinc400;
     ctx.font = '10px monospace';
 
     const visibleStart = Math.max(0, Math.floor((scrollLeft - HEADER_WIDTH) / pixelsPerSec));
@@ -107,20 +112,20 @@ export default function TimelineCanvas({
       const y = RULER_HEIGHT + i * TRACK_HEIGHT - scrollTop;
 
       // Header background
-      ctx.fillStyle = '#27272a';
+      ctx.fillStyle = zinc900;
       ctx.fillRect(scrollLeft, y, HEADER_WIDTH, TRACK_HEIGHT);
-      ctx.strokeStyle = '#3f3f46';
+      ctx.strokeStyle = zinc800;
       ctx.strokeRect(scrollLeft, y, HEADER_WIDTH, TRACK_HEIGHT);
 
       // Track lane background
-      ctx.fillStyle = i % 2 === 0 ? '#1c1c20' : '#202024';
+      ctx.fillStyle = i % 2 === 0 ? trackLaneEven : trackLaneOdd;
       ctx.fillRect(Math.max(HEADER_WIDTH, scrollLeft), y, viewportWidth, TRACK_HEIGHT);
     });
 
     // Snap guide line
     if (snapGuideTime !== null) {
       const snapX = HEADER_WIDTH + snapGuideTime * pixelsPerSec;
-      ctx.strokeStyle = '#facc15';
+      ctx.strokeStyle = amber400;
       ctx.lineWidth = 1;
       ctx.setLineDash([4, 4]);
       ctx.beginPath();
@@ -134,7 +139,7 @@ export default function TimelineCanvas({
     if (insertIndicator) {
       const ix = HEADER_WIDTH + insertIndicator.timeSec * pixelsPerSec;
       const iy = RULER_HEIGHT + insertIndicator.trackIndex * TRACK_HEIGHT - scrollTop;
-      ctx.strokeStyle = '#3b82f6';
+      ctx.strokeStyle = blue500;
       ctx.lineWidth = 2;
       ctx.setLineDash([]);
       ctx.beginPath();
@@ -142,7 +147,7 @@ export default function TimelineCanvas({
       ctx.lineTo(ix, iy + TRACK_HEIGHT);
       ctx.stroke();
       // Top triangle
-      ctx.fillStyle = '#3b82f6';
+      ctx.fillStyle = blue500;
       ctx.beginPath();
       ctx.moveTo(ix - 5, iy);
       ctx.lineTo(ix + 5, iy);
@@ -161,7 +166,7 @@ export default function TimelineCanvas({
     // Playhead line in track area
     const playheadX = HEADER_WIDTH + currentTime * pixelsPerSec;
     if (playheadX >= HEADER_WIDTH) {
-      ctx.strokeStyle = '#ef4444';
+      ctx.strokeStyle = red500;
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.moveTo(playheadX, RULER_HEIGHT);
@@ -173,7 +178,7 @@ export default function TimelineCanvas({
 
     // Playhead triangle on ruler (outside clip region so always visible)
     if (playheadX >= HEADER_WIDTH) {
-      ctx.fillStyle = '#ef4444';
+      ctx.fillStyle = red500;
       ctx.beginPath();
       ctx.moveTo(playheadX - 6, 0);
       ctx.lineTo(playheadX + 6, 0);
@@ -182,7 +187,7 @@ export default function TimelineCanvas({
       ctx.fill();
 
       // Playhead line through ruler
-      ctx.strokeStyle = '#ef4444';
+      ctx.strokeStyle = red500;
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.moveTo(playheadX, 0);

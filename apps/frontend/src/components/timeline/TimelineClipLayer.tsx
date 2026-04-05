@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
 import type { TimelineProject } from '@mrdv2/shared';
 import TimelineClip, { type DragType } from './TimelineClip';
 import {
@@ -47,13 +47,17 @@ export default memo(function TimelineClipLayer({
   const clipHeight = TRACK_HEIGHT - CLIP_PADDING * 2;
 
   // Build lookup maps: media_id → display name, file path
-  const mediaNameMap = new Map<string, string>();
-  const mediaPathMap = new Map<string, string>();
-  for (const asset of timeline.media_pool) {
-    const fileName = asset.path.split('/').pop() || asset.path;
-    mediaNameMap.set(asset.id, fileName);
-    mediaPathMap.set(asset.id, asset.path);
-  }
+  // Memoized so we don't rebuild O(n) maps on every render.
+  const { mediaNameMap, mediaPathMap } = useMemo(() => {
+    const names = new Map<string, string>();
+    const paths = new Map<string, string>();
+    for (const asset of timeline.media_pool) {
+      const fileName = asset.path.split('/').pop() || asset.path;
+      names.set(asset.id, fileName);
+      paths.set(asset.id, asset.path);
+    }
+    return { mediaNameMap: names, mediaPathMap: paths };
+  }, [timeline.media_pool]);
 
   return (
     <div

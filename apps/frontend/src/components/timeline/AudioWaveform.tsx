@@ -65,35 +65,42 @@ export default function AudioWaveform({
     return result;
   }, [waveformData, sourceInSec, sourceOutSec, renderWidth]);
 
+  // Gate canvas redraws with rAF to coalesce rapid updates during trim drag
+  const rafRef = useRef(0);
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas || !bars) return;
+    if (!bars) return;
+    cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(() => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
 
-    const dpr = window.devicePixelRatio || 1;
-    const physicalWidth = Math.min(renderWidth * dpr, 32000);
-    const physicalHeight = height * dpr;
-    canvas.width = physicalWidth;
-    canvas.height = physicalHeight;
+      const dpr = window.devicePixelRatio || 1;
+      const physicalWidth = Math.min(renderWidth * dpr, 32000);
+      const physicalHeight = height * dpr;
+      canvas.width = physicalWidth;
+      canvas.height = physicalHeight;
 
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
 
-    const scaleX = physicalWidth / renderWidth;
-    const scaleY = physicalHeight / height;
-    ctx.scale(scaleX, scaleY);
-    ctx.clearRect(0, 0, renderWidth, height);
+      const scaleX = physicalWidth / renderWidth;
+      const scaleY = physicalHeight / height;
+      ctx.scale(scaleX, scaleY);
+      ctx.clearRect(0, 0, renderWidth, height);
 
-    // Use white bars with opacity for good contrast on any track color
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
-    const centerY = height / 2;
+      // Use white bars with opacity for good contrast on any track color
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+      const centerY = height / 2;
 
-    for (let i = 0; i < bars.length; i++) {
-      const amplitude = bars[i];
-      const barHeight = Math.max(1, amplitude * height * 0.85);
-      const x = i * BAR_STEP;
-      const halfBar = barHeight / 2;
-      ctx.fillRect(x, centerY - halfBar, BAR_WIDTH, barHeight);
-    }
+      for (let i = 0; i < bars.length; i++) {
+        const amplitude = bars[i];
+        const barHeight = Math.max(1, amplitude * height * 0.85);
+        const x = i * BAR_STEP;
+        const halfBar = barHeight / 2;
+        ctx.fillRect(x, centerY - halfBar, BAR_WIDTH, barHeight);
+      }
+    });
+    return () => cancelAnimationFrame(rafRef.current);
   }, [bars, renderWidth, height, color]);
 
   if (!bars) return null;

@@ -8,6 +8,7 @@ import {
   TRACK_HEIGHT,
   ADD_TRACK_ROW_HEIGHT,
 } from './timelineConstants';
+import { zinc900, blue500 } from '../../theme';
 import {
   addTrackToTimeline,
   removeTrackFromTimeline,
@@ -187,7 +188,7 @@ export default memo(function TimelineTrackHeaders({
               scrollTop -
               1,
             height: 2,
-            backgroundColor: '#3b82f6',
+            backgroundColor: blue500,
             borderRadius: 1,
           }}
         />
@@ -207,7 +208,7 @@ export default memo(function TimelineTrackHeaders({
             height: TRACK_HEIGHT,
             opacity: 0.8,
             zIndex: 30,
-            backgroundColor: '#27272a',
+            backgroundColor: zinc900,
             borderRadius: 4,
             boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
           }}

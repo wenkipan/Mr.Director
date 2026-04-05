@@ -1,6 +1,7 @@
 import { useCallback, useRef, memo } from 'react';
 import type { Clip } from '@mrdv2/shared';
 import { TRACK_COLORS, CLIP_PADDING, TRIM_HANDLE_WIDTH } from './timelineConstants';
+import { gray500, fadeOverlayStart } from '../../theme';
 import { hitTestClipRegion } from './timelineUtils';
 import AudioWaveform from './AudioWaveform';
 import { useAudioWaveform } from '../../hooks/useAudioWaveform';
@@ -45,7 +46,7 @@ export default memo(function TimelineClip({
   onDragStart,
 }: TimelineClipProps) {
   const clipRef = useRef<HTMLDivElement>(null);
-  const color = TRACK_COLORS[trackType] || '#6b7280';
+  const color = TRACK_COLORS[trackType] || gray500;
 
   const showWaveform = trackType === 'audio' || trackType === 'video';
   const { waveformData } = useAudioWaveform(
@@ -147,7 +148,7 @@ export default memo(function TimelineClip({
           className="absolute top-0 left-0 h-full pointer-events-none"
           style={{
             width: fadeInPx,
-            background: 'linear-gradient(to right, rgba(0,0,0,0.6), transparent)',
+            background: `linear-gradient(to right, ${fadeOverlayStart}, transparent)`,
           }}
         />
       )}
@@ -158,7 +159,7 @@ export default memo(function TimelineClip({
           className="absolute top-0 right-0 h-full pointer-events-none"
           style={{
             width: fadeOutPx,
-            background: 'linear-gradient(to left, rgba(0,0,0,0.6), transparent)',
+            background: `linear-gradient(to left, ${fadeOverlayStart}, transparent)`,
           }}
         />
       )}
